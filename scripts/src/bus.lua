@@ -274,6 +274,8 @@ if BUSES["A7800"] then
 		MAME_DIR .. "src/devices/bus/a7800/a78_carts.h",
 		MAME_DIR .. "src/devices/bus/a7800/rom.cpp",
 		MAME_DIR .. "src/devices/bus/a7800/rom.h",
+		MAME_DIR .. "src/devices/bus/a7800/bankset.cpp",
+		MAME_DIR .. "src/devices/bus/a7800/bankset.h",
 		MAME_DIR .. "src/devices/bus/a7800/hiscore.cpp",
 		MAME_DIR .. "src/devices/bus/a7800/hiscore.h",
 		MAME_DIR .. "src/devices/bus/a7800/xboard.cpp",
