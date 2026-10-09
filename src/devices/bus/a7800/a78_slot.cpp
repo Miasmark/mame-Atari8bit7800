@@ -262,7 +262,9 @@ int a78_cart_slot_device::validate_header(int head, bool log) const
 		head &= 0xff00;
 	}
 
-	if ((head & 0xff00) > 0x300)
+	// bankset ($2000), bank RAM ($4000) and POKEY at $0800 ($8000) are handled by a78_special_type;
+	// anything else above the Activision/Absolute bits is still unsupported
+	if ((head & 0xff00) > 0x300 && (head & 0xff00 & ~0xe000) != 0 && !(head & 0xe000))
 	{
 		if (log)
 		{
@@ -309,8 +311,49 @@ static const a78_slot slot_list[] =
 	{ A78_TYPE1_POK450, "a78_p450_t1" },
 	{ A78_TYPE6_POK450, "a78_p450_t6" },
 	{ A78_TYPEA_POK450, "a78_p450_ta" },
-	{ A78_VERSA_POK450, "a78_p450_vb" }
+	{ A78_VERSA_POK450, "a78_p450_vb" },
+	{ A78_TYPE0_POK800, "a78_p800_t0" },
+	{ A78_TYPE1_POK800, "a78_p800_t1" },
+	{ A78_TYPE2_POK800, "a78_p800_t2" },
+	{ A78_TYPE6_POK800, "a78_p800_t6" },
+	{ A78_TYPEA_POK800, "a78_p800_ta" },
+	{ A78_BANKSET,                   "a78_bankset" },
+	{ A78_BANKSET_POK800,            "a78_bankset_p800" },
+	{ A78_BANKSET_POK4000,           "a78_bankset_p4000" },
+	{ A78_BANKSET_SG,                "a78_bankset_sg" },
+	{ A78_BANKSET_SG_POK800,         "a78_bankset_sg_p800" },
+	{ A78_BANKSET_SG_BANKRAM,        "a78_bankset_sg_bankram" },
+	{ A78_BANKSET_SG_BANKRAM_POK800, "a78_bankset_sg_bankram_p800" },
+	{ A78_BANKSET_BANKRAM,           "a78_bankset_bankram" },
+	{ A78_BANKSET_BANKRAM_POK800,    "a78_bankset_bankram_p800" },
+	{ A78_BANKSET_52K,               "a78_bankset_52k" },
+	{ A78_BANKSET_52K_POK4000,       "a78_bankset_52k_p4000" }
 };
+
+// Bankset carts (header bit $2000) and carts with a POKEY at $0800 (header bit $8000), which
+// the plain header switch does not know. -1 if this header is neither.
+static int a78_special_type(int mapper, uint64_t len)
+{
+	switch (mapper & 0xe02e)
+	{
+	case 0x2000:    // flat bankset, with or without POKEY at $4000; 52K halves reach down to $3000
+		if (BIT(mapper, 0))
+			return (len >= 0x1a000) ? A78_BANKSET_52K_POK4000 : A78_BANKSET_POK4000;
+		return (len >= 0x1a000) ? A78_BANKSET_52K : A78_BANKSET;
+	case 0xa000: return A78_BANKSET_POK800;
+	case 0x6000: return A78_BANKSET_BANKRAM;
+	case 0xe000: return A78_BANKSET_BANKRAM_POK800;
+	case 0x2002: return A78_BANKSET_SG;
+	case 0x6002: return A78_BANKSET_SG_BANKRAM;
+	case 0xa002: return A78_BANKSET_SG_POK800;
+	case 0xe002: return A78_BANKSET_SG_BANKRAM_POK800;
+	case 0x8000: return BIT(mapper, 0) ? A78_TYPE1_POK800 : A78_TYPE0_POK800;
+	case 0x8002: return A78_TYPE2_POK800;
+	case 0x8006: return A78_TYPE6_POK800;
+	case 0x800a: return A78_TYPEA_POK800;
+	}
+	return -1;
+}
 
 static int a78_get_pcb_id(const char *slot)
 {
@@ -417,6 +460,9 @@ std::pair<std::error_condition, std::string> a78_cart_slot_device::call_load()
 				}
 			}
 
+			if (int const special = a78_special_type(mapper, len); special >= 0)
+				m_type = special;
+
 			// check special bits, which override the previous
 			if ((mapper & 0xff00) == 0x0100)
 				m_type = A78_ACTIVISION;
@@ -454,6 +500,10 @@ std::pair<std::error_condition, std::string> a78_cart_slot_device::call_load()
 			if (m_type == A78_TYPE6 || m_type == A78_TYPE8)
 				m_cart->ram_alloc(0x4000);
 			if (m_type == A78_MEGACART || (m_type >= A78_VERSABOARD && m_type <= A78_VERSA_POK450))
+				m_cart->ram_alloc(0x8000);
+			// bankset bank RAM: 16K for the CPU at $4000 and 16K for MARIA
+			if (m_type == A78_BANKSET_SG_BANKRAM || m_type == A78_BANKSET_SG_BANKRAM_POK800 ||
+					m_type == A78_BANKSET_BANKRAM || m_type == A78_BANKSET_BANKRAM_POK800)
 				m_cart->ram_alloc(0x8000);
 			if (m_type == A78_XB_BOARD || m_type == A78_XM_BOARD)
 				m_cart->ram_alloc(0x20000);
@@ -551,6 +601,9 @@ std::string a78_cart_slot_device::get_default_card_software(get_default_card_sof
 			}
 		}
 
+		if (int const special = a78_special_type(mapper, len); special >= 0)
+			type = special;
+
 		// check special bits, which override the previous
 		if ((mapper & 0xff00) == 0x0100)
 			type = A78_ACTIVISION;
@@ -577,6 +630,14 @@ uint8_t a78_cart_slot_device::read_04xx(offs_t offset)
 {
 	if (m_cart)
 		return m_cart->read_04xx(offset);
+	else
+		return 0xff;
+}
+
+uint8_t a78_cart_slot_device::read_08xx(offs_t offset)
+{
+	if (m_cart)
+		return m_cart->read_08xx(offset);
 	else
 		return 0xff;
 }
@@ -614,6 +675,12 @@ void a78_cart_slot_device::write_04xx(offs_t offset, uint8_t data)
 {
 	if (m_cart)
 		m_cart->write_04xx(offset, data);
+}
+
+void a78_cart_slot_device::write_08xx(offs_t offset, uint8_t data)
+{
+	if (m_cart)
+		m_cart->write_08xx(offset, data);
 }
 
 void a78_cart_slot_device::write_10xx(offs_t offset, uint8_t data)

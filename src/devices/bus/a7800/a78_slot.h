@@ -34,7 +34,27 @@ enum
 	A78_TYPE1_POK450 = 0x21,
 	A78_TYPE6_POK450 = 0x24,
 	A78_TYPEA_POK450 = 0x25,
-	A78_VERSA_POK450 = 0x30
+	A78_VERSA_POK450 = 0x30,
+
+	// carts with a POKEY at $0800 (homebrew pcb)
+	A78_TYPE0_POK800 = 0x80,
+	A78_TYPE1_POK800 = 0x81,
+	A78_TYPE2_POK800 = 0x82,
+	A78_TYPE6_POK800 = 0x84,
+	A78_TYPEA_POK800 = 0x85,
+
+	// bankset carts: two parallel sets of banks, one seen by the CPU and one by MARIA
+	A78_BANKSET = 0x100,
+	A78_BANKSET_POK800,
+	A78_BANKSET_POK4000,
+	A78_BANKSET_SG,
+	A78_BANKSET_SG_POK800,
+	A78_BANKSET_SG_BANKRAM,
+	A78_BANKSET_SG_BANKRAM_POK800,
+	A78_BANKSET_BANKRAM,
+	A78_BANKSET_BANKRAM_POK800,
+	A78_BANKSET_52K,
+	A78_BANKSET_52K_POK4000
 };
 
 
@@ -48,13 +68,18 @@ public:
 
 	// memory accessor
 	virtual uint8_t read_04xx(offs_t offset) { return 0xff; }
+	virtual uint8_t read_08xx(offs_t offset) { return 0xff; }
 	virtual uint8_t read_10xx(offs_t offset) { return 0xff; }
 	virtual uint8_t read_30xx(offs_t offset) { return 0xff; }
 	virtual uint8_t read_40xx(offs_t offset) { return 0xff; }
 	virtual void write_04xx(offs_t offset, uint8_t data) {}
+	virtual void write_08xx(offs_t offset, uint8_t data) {}
 	virtual void write_10xx(offs_t offset, uint8_t data) {}
 	virtual void write_30xx(offs_t offset, uint8_t data) {}
 	virtual void write_40xx(offs_t offset, uint8_t data) {}
+
+	// true while MARIA is the one reading (bankset carts show MARIA the other half of the ROM)
+	void set_dma_active(bool active) { m_dmaactive = active; }
 
 	void rom_alloc(uint32_t size);
 	void ram_alloc(uint32_t size);
@@ -77,6 +102,7 @@ protected:
 	// helpers
 	uint32_t m_base_rom;
 	int m_bank_mask;
+	bool m_dmaactive = false;
 };
 
 
@@ -111,13 +137,16 @@ public:
 
 	int get_cart_type() { return m_type; }
 	bool has_cart() { return m_cart != nullptr; }
+	void set_dma_active(bool active) { if (m_cart) m_cart->set_dma_active(active); }
 
 	// reading and writing
 	uint8_t read_04xx(offs_t offset);
+	uint8_t read_08xx(offs_t offset);
 	uint8_t read_10xx(offs_t offset);
 	uint8_t read_30xx(offs_t offset);
 	uint8_t read_40xx(offs_t offset);
 	void write_04xx(offs_t offset, uint8_t data);
+	void write_08xx(offs_t offset, uint8_t data);
 	void write_10xx(offs_t offset, uint8_t data);
 	void write_30xx(offs_t offset, uint8_t data);
 	void write_40xx(offs_t offset, uint8_t data);

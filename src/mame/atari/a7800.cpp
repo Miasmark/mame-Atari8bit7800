@@ -146,6 +146,7 @@ protected:
 	void tia_w(offs_t offset, uint8_t data);
 	virtual void a7800_palette(palette_device &palette) const ATTR_COLD;
 	TIMER_DEVICE_CALLBACK_MEMBER(interrupt);
+	TIMER_CALLBACK_MEMBER(maria_startvisible);
 	TIMER_CALLBACK_MEMBER(maria_startdma);
 	uint8_t riot_joystick_r();
 	uint8_t riot_console_button_r();
@@ -166,6 +167,8 @@ protected:
 	bool m_p2_one_button = true;
 
 	emu_timer *m_dma_start_timer = nullptr;
+	emu_timer *m_visible_timer = nullptr;
+	int m_pixelx = 0;
 
 	required_device<cpu_device> m_maincpu;
 	required_device<tia_device> m_tia;
@@ -294,11 +297,27 @@ TIMER_DEVICE_CALLBACK_MEMBER(a7800_state::interrupt)
 	// DMA Begins 7 cycles after hblank
 	m_dma_start_timer->adjust(m_maincpu->cycles_to_attotime(7));
 	m_maria->interrupt(m_lines);
+
+	// Visible pixels begin after 33.5 cycles (a7800 fork): MARIA shows its line a pixel at a time,
+	// every half CPU cycle, so register writes in the middle of a scanline show up in the middle of it
+	m_pixelx = 0;
+	m_visible_timer->adjust(m_maincpu->cycles_to_attotime(67) / 2);
+}
+
+TIMER_CALLBACK_MEMBER(a7800_state::maria_startvisible)
+{
+	m_maria->display_visible(m_pixelx);
+	m_pixelx++;
+	if (m_pixelx < 160)
+		m_visible_timer->adjust(m_maincpu->cycles_to_attotime(1) / 2);
 }
 
 TIMER_CALLBACK_MEMBER(a7800_state::maria_startdma)
 {
+	// bankset carts show MARIA the other half of the ROM (and its own bank RAM)
+	m_cart->set_dma_active(true);
 	m_maria->startdma(m_lines);
+	m_cart->set_dma_active(false);
 }
 
 
@@ -1378,6 +1397,23 @@ void a7800_state::machine_start()
 			// POKEY and RAM regs at 0x400-0x47f
 			m_maincpu->space(AS_PROGRAM).install_readwrite_handler(0x0400, 0x047f, read8sm_delegate(*m_cart, FUNC(a78_cart_slot_device::read_04xx)), write8sm_delegate(*m_cart, FUNC(a78_cart_slot_device::write_04xx)));
 			break;
+		case A78_BANKSET_52K:
+		case A78_BANKSET_52K_POK4000:
+			// 52K halves reach down to $3000
+			m_maincpu->space(AS_PROGRAM).install_read_handler(0x3000, 0x3fff, read8sm_delegate(*m_cart, FUNC(a78_cart_slot_device::read_30xx)));
+			break;
+		case A78_TYPE0_POK800:
+		case A78_TYPE1_POK800:
+		case A78_TYPE2_POK800:
+		case A78_TYPE6_POK800:
+		case A78_TYPEA_POK800:
+		case A78_BANKSET_POK800:
+		case A78_BANKSET_SG_POK800:
+		case A78_BANKSET_SG_BANKRAM_POK800:
+		case A78_BANKSET_BANKRAM_POK800:
+			// POKEY at 0x800-0xfff
+			m_maincpu->space(AS_PROGRAM).install_readwrite_handler(0x0800, 0x0fff, read8sm_delegate(*m_cart, FUNC(a78_cart_slot_device::read_08xx)), write8sm_delegate(*m_cart, FUNC(a78_cart_slot_device::write_08xx)));
+			break;
 		case A78_XM_BOARD:
 			// POKEY and RAM and YM regs at 0x400-0x47f
 			m_maincpu->space(AS_PROGRAM).install_readwrite_handler(0x0400, 0x047f, read8sm_delegate(*m_cart, FUNC(a78_cart_slot_device::read_04xx)), write8sm_delegate(*m_cart, FUNC(a78_cart_slot_device::write_04xx)));
@@ -1389,6 +1425,8 @@ void a7800_state::machine_start()
 	}
 
 	m_dma_start_timer = timer_alloc(FUNC(a7800_state::maria_startdma), this);
+	m_visible_timer = timer_alloc(FUNC(a7800_state::maria_startvisible), this);
+	save_item(NAME(m_pixelx));
 }
 
 void a7800_state::machine_reset()

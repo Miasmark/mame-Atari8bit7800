@@ -22,6 +22,7 @@ public:
 
 	void interrupt(int lines);
 	void startdma(int lines);
+	void display_visible(int pixelx);
 
 	uint8_t read(offs_t offset);
 	void write(offs_t offset, uint8_t data);

@@ -9,6 +9,7 @@
 #include "xboard.h"
 #include "hiscore.h"
 #include "cpuwiz.h"
+#include "bankset.h"
 
 static void a7800_cart(device_slot_interface &device)
 {
@@ -32,6 +33,24 @@ static void a7800_cart(device_slot_interface &device)
 	device.option_add_internal("a78_p450_t6",  A78_ROM_P450_SG_RAM);
 	device.option_add_internal("a78_p450_ta",  A78_ROM_P450_SG9);
 	device.option_add_internal("a78_p450_vb",  A78_ROM_P450_VB);
+	// cart variants with a POKEY at 0x0800 (homebrew pcb)
+	device.option_add_internal("a78_p800_t0",  A78_ROM_P800);
+	device.option_add_internal("a78_p800_t1",  A78_ROM_P800_POKEY);
+	device.option_add_internal("a78_p800_t2",  A78_ROM_P800_SG);
+	device.option_add_internal("a78_p800_t6",  A78_ROM_P800_SG_RAM);
+	device.option_add_internal("a78_p800_ta",  A78_ROM_P800_SG9);
+	// bankset carts: two parallel sets of banks, one for the CPU and one for MARIA
+	device.option_add_internal("a78_bankset",                    A78_ROM_BANKSET_ROM);
+	device.option_add_internal("a78_bankset_p800",               A78_ROM_BANKSET_ROM_POK800);
+	device.option_add_internal("a78_bankset_p4000",              A78_ROM_BANKSET_ROM_POK4000);
+	device.option_add_internal("a78_bankset_bankram",            A78_ROM_BANKSET_BANKRAM);
+	device.option_add_internal("a78_bankset_bankram_p800",       A78_ROM_BANKSET_BANKRAM_POK800);
+	device.option_add_internal("a78_bankset_52k",                A78_ROM_BANKSET_ROM_52K);
+	device.option_add_internal("a78_bankset_52k_p4000",          A78_ROM_BANKSET_ROM_52K_POK4000);
+	device.option_add_internal("a78_bankset_sg",                 A78_ROM_BANKSET_SG);
+	device.option_add_internal("a78_bankset_sg_p800",            A78_ROM_BANKSET_SG_POK800);
+	device.option_add_internal("a78_bankset_sg_bankram",         A78_ROM_BANKSET_SG_BANKRAM);
+	device.option_add_internal("a78_bankset_sg_bankram_p800",    A78_ROM_BANKSET_SG_BANKRAM_POK800);
 }
 
 
