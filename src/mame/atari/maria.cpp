@@ -230,27 +230,27 @@ void atari_maria_device::draw_scanline()
 		int width;
 		uint8_t hpos, pal;
 		bool ind;
-		while (((read_byte(dl + 1) & 0x5f) != 0) && (maria_cycles < DMALIMIT))
+		while (((read_dl(dl + 1) & 0x5f) != 0) && (maria_cycles < DMALIMIT))
 		{
 			/* Extended header */
-			if (!(read_byte(dl + 1) & 0x1f)) // bit 4 also needs to set?
+			if (!(read_dl(dl + 1) & 0x1f)) // bit 4 also needs to set?
 			{
-				graph_adr = (read_byte(dl + 2) << 8) | read_byte(dl);
-				width = ((read_byte(dl + 3) ^ 0xff) & 0x1f) + 1;
-				hpos = read_byte(dl + 4);
-				pal = read_byte(dl + 3) >> 5;
-				m_write_mode = BIT(read_byte(dl + 1), 7);
-				ind = BIT(read_byte(dl + 1), 5);
+				graph_adr = (read_dl(dl + 2) << 8) | read_dl(dl);
+				width = ((read_dl(dl + 3) ^ 0xff) & 0x1f) + 1;
+				hpos = read_dl(dl + 4);
+				pal = read_dl(dl + 3) >> 5;
+				m_write_mode = BIT(read_dl(dl + 1), 7);
+				ind = BIT(read_dl(dl + 1), 5);
 				dl += 5;
 				maria_cycles += 10;
 			}
 			/* Normal header */
 			else
 			{
-				graph_adr = (read_byte(dl + 2) << 8) | read_byte(dl);
-				width = ((read_byte(dl + 1) ^ 0xff) & 0x1f) + 1;
-				hpos = read_byte(dl + 3);
-				pal = read_byte(dl + 1) >> 5;
+				graph_adr = (read_dl(dl + 2) << 8) | read_dl(dl);
+				width = ((read_dl(dl + 1) ^ 0xff) & 0x1f) + 1;
+				hpos = read_dl(dl + 3);
+				pal = read_dl(dl + 1) >> 5;
 				ind = false;
 				dl += 4;
 				maria_cycles += 8;
@@ -316,7 +316,7 @@ void atari_maria_device::draw_scanline()
 		if (m_offset == 0)
 		{
 			maria_cycles += 8; // extra shutdown time (the fork measured 8; it was 6)
-			if (BIT(read_byte(m_dll + 3), 7))
+			if (BIT(read_dl(m_dll + 3), 7))
 				maria_cycles += 17; // interrupt overhead
 		}
 
@@ -381,6 +381,26 @@ void atari_maria_device::display_visible(int pixelx)
 }
 
 
+// A display list and the display list list are read through here. On a bankset cartridge with bank
+// RAM they must live in console RAM, not in the cartridge's RAM at $4000-$7FFF ("Your DL must be
+// stored in console ram, rather than bankset cart ram", 7800.8bitdev.org, Bankset Bankswitching):
+// MARIA does not get them from there. Such a fetch reads 0, which ends the list, and says so once.
+uint8_t atari_maria_device::read_dl(offs_t addr)
+{
+	if (addr >= m_cart_ram_lo && addr <= m_cart_ram_hi)
+	{
+		if (!m_dl_warned)
+		{
+			osd_printf_warning("MARIA fetched a display list from bankset cart RAM ($%04X): unsupported, "
+					"display lists must be in console RAM\n", addr);
+			m_dl_warned = true;
+		}
+		return 0;
+	}
+	return read_byte(addr);
+}
+
+
 void atari_maria_device::interrupt(int lines)
 {
 	if (m_wsync)
@@ -409,8 +429,8 @@ void atari_maria_device::startdma(int lines)
 	{
 		/* end of vblank */
 		m_dll = m_dpp; // currently only handle changes to dll during vblank
-		m_dl = (read_byte(m_dll + 1) << 8) | read_byte(m_dll + 2);
-		const uint8_t header = read_byte(m_dll);
+		m_dl = (read_dl(m_dll + 1) << 8) | read_dl(m_dll + 2);
+		const uint8_t header = read_dl(m_dll);
 		m_offset = header & 0x0f;
 		m_holey = (header & 0x60) >> 5;
 		m_dli = BIT(header, 7);
@@ -425,8 +445,8 @@ void atari_maria_device::startdma(int lines)
 		if (m_offset == 0)
 		{
 			m_dll += 3;
-			m_dl = (read_byte(m_dll + 1) << 8) | read_byte(m_dll + 2);
-			const uint8_t header = read_byte(m_dll);
+			m_dl = (read_dl(m_dll + 1) << 8) | read_dl(m_dll + 2);
+			const uint8_t header = read_dl(m_dll);
 			m_offset = header & 0x0f;
 			m_holey = (header & 0x60) >> 5;
 			if (BIT(header, 4))

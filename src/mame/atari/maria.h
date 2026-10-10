@@ -24,6 +24,12 @@ public:
 	void startdma(int lines);
 	void display_visible(int pixelx);
 
+	// the CPU address range that is bankset cartridge RAM, if the cartridge has any: display lists
+	// fetched from it read as empty (see read_dl)
+	// true while MARIA, not the CPU, is the one reading (the DMA goes through the CPU's address space)
+	bool in_dma_read() const { return m_in_dma_read; }
+	void set_cart_ram_window(offs_t lo, offs_t hi) { m_cart_ram_lo = lo; m_cart_ram_hi = hi; m_dl_warned = false; }
+
 	uint8_t read(offs_t offset);
 	void write(offs_t offset, uint8_t data);
 
@@ -41,7 +47,8 @@ private:
 	bool is_holey(offs_t addr);
 	int write_line_ram(offs_t addr, uint8_t offset, uint8_t pal);
 
-	uint8_t read_byte(offs_t addr) const { return m_dmaspace->read_byte(addr); }
+	uint8_t read_byte(offs_t addr) const { m_in_dma_read = true; const uint8_t data = m_dmaspace->read_byte(addr); m_in_dma_read = false; return data; }
+	uint8_t read_dl(offs_t addr);
 
 	uint8_t m_maria_palette[32];
 	std::unique_ptr<uint8_t []> m_line_ram[2];
@@ -63,6 +70,11 @@ private:
 	bool m_dli;
 	uint32_t m_charbase;
 	bitmap_ind16 m_bitmap;
+
+	mutable bool m_in_dma_read = false;
+	offs_t m_cart_ram_lo = 1;
+	offs_t m_cart_ram_hi = 0;      // an empty window until the driver sets one
+	bool m_dl_warned = false;
 
 	required_address_space m_dmaspace;
 

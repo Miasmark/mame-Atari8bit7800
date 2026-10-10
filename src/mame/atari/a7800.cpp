@@ -143,6 +143,7 @@ protected:
 	void a7800_common(machine_config &config, uint32_t clock) ATTR_COLD;
 
 	uint8_t tia_r(offs_t offset);
+	uint8_t bankram_window_r(offs_t offset);
 	void tia_w(offs_t offset, uint8_t data);
 	virtual void a7800_palette(palette_device &palette) const ATTR_COLD;
 	TIMER_DEVICE_CALLBACK_MEMBER(interrupt);
@@ -169,8 +170,9 @@ protected:
 	emu_timer *m_dma_start_timer = nullptr;
 	emu_timer *m_visible_timer = nullptr;
 	int m_pixelx = 0;
+	bool m_cart_ram_exec_warned = false;
 
-	required_device<cpu_device> m_maincpu;
+	required_device<m6502_device> m_maincpu;
 	required_device<tia_device> m_tia;
 	required_device<atari_maria_device> m_maria;
 	required_device<mos6532_device> m_riot;
@@ -222,6 +224,25 @@ void a7800_state::riot_button_pullup_w(uint8_t data)
 	// pin 6 of the controller port is held high by the riot chip when reading two-button controllers (from schematic)
 	m_p1_one_button = BIT(data, 2);
 	m_p2_one_button = BIT(data, 4);
+}
+
+// Bankset cartridges with bank RAM: "execution from Sally's cart-ram isn't supported"
+// (7800.8bitdev.org, Bankset Bankswitching). An opcode fetch (the CPU's SYNC line) from the window
+// reads $FF here, and says so once. (MARIA's DMA reads of its own
+// RAM come through here too, with the CPU halted mid-fetch: those are told apart by MARIA's flag.)
+uint8_t a7800_state::bankram_window_r(offs_t offset)
+{
+	const offs_t addr = 0x4000 + offset;
+	if (!machine().side_effects_disabled() && m_maincpu->get_sync() && !m_maria->in_dma_read())
+	{
+		if (!m_cart_ram_exec_warned)
+		{
+			osd_printf_warning("the CPU fetched an instruction from bankset cart RAM ($%04X): unsupported on hardware\n", addr);
+			m_cart_ram_exec_warned = true;
+		}
+		return 0xff;
+	}
+	return m_cart->read_40xx(offset);
 }
 
 uint8_t a7800_state::tia_r(offs_t offset)
@@ -1397,6 +1418,13 @@ void a7800_state::machine_start()
 			// POKEY and RAM regs at 0x400-0x47f
 			m_maincpu->space(AS_PROGRAM).install_readwrite_handler(0x0400, 0x047f, read8sm_delegate(*m_cart, FUNC(a78_cart_slot_device::read_04xx)), write8sm_delegate(*m_cart, FUNC(a78_cart_slot_device::write_04xx)));
 			break;
+		case A78_BANKSET_SG_BANKRAM:
+		case A78_BANKSET_BANKRAM:
+			// bank RAM: MARIA cannot take its display lists from the cartridge's RAM, and the CPU
+			// cannot execute from its own
+			m_maria->set_cart_ram_window(0x4000, 0x7fff);
+			m_maincpu->space(AS_PROGRAM).install_read_handler(0x4000, 0x7fff, read8sm_delegate(*this, FUNC(a7800_state::bankram_window_r)));
+			break;
 		case A78_BANKSET_52K:
 		case A78_BANKSET_52K_POK4000:
 			// 52K halves reach down to $3000
@@ -1411,6 +1439,12 @@ void a7800_state::machine_start()
 		case A78_BANKSET_SG_POK800:
 		case A78_BANKSET_SG_BANKRAM_POK800:
 		case A78_BANKSET_BANKRAM_POK800:
+			// (with bank RAM, as above: display lists cannot come from the cartridge's RAM)
+			if (m_cart->get_cart_type() == A78_BANKSET_SG_BANKRAM_POK800 || m_cart->get_cart_type() == A78_BANKSET_BANKRAM_POK800)
+			{
+				m_maria->set_cart_ram_window(0x4000, 0x7fff);
+				m_maincpu->space(AS_PROGRAM).install_read_handler(0x4000, 0x7fff, read8sm_delegate(*this, FUNC(a7800_state::bankram_window_r)));
+			}
 			// POKEY at 0x800-0xfff
 			m_maincpu->space(AS_PROGRAM).install_readwrite_handler(0x0800, 0x0fff, read8sm_delegate(*m_cart, FUNC(a78_cart_slot_device::read_08xx)), write8sm_delegate(*m_cart, FUNC(a78_cart_slot_device::write_08xx)));
 			break;
