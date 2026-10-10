@@ -24,10 +24,10 @@ public:
 	void startdma(int lines);
 	void display_visible(int pixelx);
 
-	// the CPU address range that is bankset cartridge RAM, if the cartridge has any: display lists
-	// fetched from it read as empty (see read_dl)
 	// true while MARIA, not the CPU, is the one reading (the DMA goes through the CPU's address space)
 	bool in_dma_read() const { return m_in_dma_read; }
+	// the CPU address range of a bankset cartridge (its ROM and RAM): display lists fetched from it
+	// read as empty (see read_dl); they belong in console RAM
 	void set_cart_ram_window(offs_t lo, offs_t hi) { m_cart_ram_lo = lo; m_cart_ram_hi = hi; m_dl_warned = false; }
 
 	uint8_t read(offs_t offset);

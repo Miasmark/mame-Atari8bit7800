@@ -1402,6 +1402,10 @@ void a7800_state::machine_start()
 	// install additional handlers, if needed
 	if (m_cart->exists())
 	{
+		// a bankset cartridge: MARIA's display lists belong in console RAM, not in the cartridge's
+		// ROM or RAM (7800.8bitdev.org, Bankset Bankswitching); the 52K halves reach down to $3000
+		if (m_cart->get_cart_type() >= A78_BANKSET && m_cart->get_cart_type() <= A78_BANKSET_52K_POK4000)
+			m_maria->set_cart_ram_window((m_cart->get_cart_type() >= A78_BANKSET_52K) ? 0x3000 : 0x4000, 0xffff);
 		switch (m_cart->get_cart_type())
 		{
 		case A78_HSC:
@@ -1420,9 +1424,7 @@ void a7800_state::machine_start()
 			break;
 		case A78_BANKSET_SG_BANKRAM:
 		case A78_BANKSET_BANKRAM:
-			// bank RAM: MARIA cannot take its display lists from the cartridge's RAM, and the CPU
-			// cannot execute from its own
-			m_maria->set_cart_ram_window(0x4000, 0x7fff);
+			// bank RAM: the CPU cannot execute from its own
 			m_maincpu->space(AS_PROGRAM).install_read_handler(0x4000, 0x7fff, read8sm_delegate(*this, FUNC(a7800_state::bankram_window_r)));
 			break;
 		case A78_BANKSET_52K:
@@ -1439,10 +1441,9 @@ void a7800_state::machine_start()
 		case A78_BANKSET_SG_POK800:
 		case A78_BANKSET_SG_BANKRAM_POK800:
 		case A78_BANKSET_BANKRAM_POK800:
-			// (with bank RAM, as above: display lists cannot come from the cartridge's RAM)
+			// (with bank RAM, as above: the CPU cannot execute from its own)
 			if (m_cart->get_cart_type() == A78_BANKSET_SG_BANKRAM_POK800 || m_cart->get_cart_type() == A78_BANKSET_BANKRAM_POK800)
 			{
-				m_maria->set_cart_ram_window(0x4000, 0x7fff);
 				m_maincpu->space(AS_PROGRAM).install_read_handler(0x4000, 0x7fff, read8sm_delegate(*this, FUNC(a7800_state::bankram_window_r)));
 			}
 			// POKEY at 0x800-0xfff
