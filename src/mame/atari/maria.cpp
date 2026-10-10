@@ -381,17 +381,19 @@ void atari_maria_device::display_visible(int pixelx)
 }
 
 
-// A display list and the display list list are read through here. On a bankset cartridge with bank
-// RAM they must live in console RAM, not in the cartridge's RAM at $4000-$7FFF ("Your DL must be
-// stored in console ram, rather than bankset cart ram", 7800.8bitdev.org, Bankset Bankswitching):
-// MARIA does not get them from there. Such a fetch reads 0, which ends the list, and says so once.
+// A display list and the display list list are read through here. On a bankset cartridge they must
+// live in console RAM, not in the cartridge's ROM or RAM ("Your DL must be stored in console ram,
+// rather than bankset cart ram", 7800.8bitdev.org, Bankset Bankswitching): MARIA does not get them
+// from there. Such a fetch reads 0, which ends the list, and says so once. (Enabling DMA in the
+// middle of a frame makes MARIA read a list from the stale pointer it held, in zero page: that can
+// trip this once, at start-up; games switch DMA on in vertical blank.)
 uint8_t atari_maria_device::read_dl(offs_t addr)
 {
 	if (addr >= m_cart_ram_lo && addr <= m_cart_ram_hi)
 	{
 		if (!m_dl_warned)
 		{
-			osd_printf_warning("MARIA fetched a display list from bankset cart RAM ($%04X): unsupported, "
+			osd_printf_warning("MARIA fetched a display list from bankset cartridge space ($%04X): unsupported, "
 					"display lists must be in console RAM\n", addr);
 			m_dl_warned = true;
 		}
