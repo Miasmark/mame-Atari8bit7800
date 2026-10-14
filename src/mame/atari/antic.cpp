@@ -20,8 +20,9 @@
 #define CYCLES_PER_LINE 114     /* total number of cpu cycles per scanline (incl. hblank) */
 #define CYCLES_REFRESH  9       /* number of cycles lost for ANTICs RAM refresh using DMA */
 #define CYCLES_HSTART   32      /* where does the ANTIC DMA fetch start */
-#define CYCLES_DLI_NMI  7       /* number of cycles until the CPU recognizes a DLI */
+#define CYCLES_DLI_NMI  8       /* ANTIC pulls NMI at cycle 8, after display list and P/M DMA */
 #define CYCLES_HSYNC    104     /* where does the HSYNC position of a scanline start */
+#define CYCLES_WSYNC    105     /* a CPU halted by WSYNC runs again on this cycle */
 
 #define PMOFFSET        32      /* # of pixels to adjust p/m hpos */
 
@@ -377,6 +378,15 @@ void antic_device::device_start()
 	save_item(NAME(m_render3));
 	save_item(NAME(m_cmd));
 	save_item(NAME(m_steal_cycles));
+	save_item(NAME(m_dma_busy));
+	save_item(NAME(m_dma_run));
+	save_item(NAME(m_dma_runs));
+	save_item(NAME(m_dma_run_start));
+	save_item(NAME(m_dma_run_len));
+	save_item(NAME(m_line_start));
+	save_item(NAME(m_dl_fetched));
+	save_item(NAME(m_dl_addr_fetched));
+	save_item(NAME(m_line_rendered));
 	save_item(NAME(m_vscrol_old));
 	save_item(NAME(m_hscrol_old));
 	save_item(NAME(m_modelines));
@@ -401,6 +411,11 @@ void antic_device::device_start()
 	m_issue_dli_timer = timer_alloc(FUNC(antic_device::issue_dli), this);
 	m_scanline_timer = timer_alloc(FUNC(antic_device::scanline_render), this);
 	m_line_done_timer = timer_alloc(FUNC(antic_device::line_done), this);
+	m_dma_timer = timer_alloc(FUNC(antic_device::dma_cycles), this);
+	m_dma_timer->adjust(attotime::never);
+	m_dma_runs = m_dma_run = 0;
+	m_dl_fetched = m_dl_addr_fetched = m_line_rendered = false;
+	std::fill(std::begin(m_dma_busy), std::end(m_dma_busy), DMA_FREE);
 
 	m_cycle_steal_timer->adjust(attotime::never);
 	m_issue_dli_timer->adjust(attotime::never);
@@ -1242,7 +1257,8 @@ void antic_device::write(offs_t offset, uint8_t data)
 	case 10: /* WSYNC write */
 		LOG("ANTIC 0A write WSYNC  $%02X\n", data);
 		m_maincpu->spin_until_trigger(TRIGGER_HSYNC);
-		m_w.wsync = 1;
+		/* a write on cycle 104 or later is too late for this line's horizontal blank */
+		m_w.wsync = (cycle() >= CYCLES_HSYNC) ? 2 : 1;
 		break;
 	case 11:
 		if( data == m_w.antic0b )
@@ -1929,7 +1945,12 @@ TIMER_CALLBACK_MEMBER( antic_device::issue_dli )
 TIMER_CALLBACK_MEMBER( antic_device::line_done )
 {
 	LOG("           @cycle #%3d line_done\n", cycle());
-	if( m_w.wsync )
+	if( m_w.wsync == 2 )
+	{
+		/* WSYNC was written too late in the previous line: this is the line it waits for */
+		m_w.wsync = 1;
+	}
+	else if( m_w.wsync )
 	{
 		LOG("           @cycle #%3d release WSYNC\n", cycle());
 		/* release the CPU if it was actually waiting for HSYNC */
@@ -1937,12 +1958,11 @@ TIMER_CALLBACK_MEMBER( antic_device::line_done )
 		/* and turn off the 'wait for hsync' flag */
 		m_w.wsync = 0;
 	}
-	LOG("           @cycle #%3d release CPU\n", cycle());
-	/* release the CPU (held for emulating cycles stolen by ANTIC DMA) */
-	machine().scheduler().trigger(TRIGGER_STEAL);
 
 	/* refresh the display (translate color clocks to pixels) */
-	linerefresh();
+	if( m_line_rendered )
+		linerefresh();
+	m_line_rendered = false;
 }
 
 /*****************************************************************************
@@ -2026,9 +2046,9 @@ TIMER_CALLBACK_MEMBER( antic_device::scanline_render )
 	if (m_scanline >= VBL_END && m_scanline < 256)
 		m_gtia->render((uint8_t *)m_pmbits + PMOFFSET, (uint8_t *)m_cclock + PMOFFSET - m_hscrol_old, m_prio_table[m_gtia->get_w_prior() & 0x3f].get(), (uint8_t *)&m_pmbits);
 
-	m_steal_cycles += CYCLES_REFRESH;
-	LOG("           run CPU for %d cycles\n", CYCLES_HSYNC - CYCLES_HSTART - m_steal_cycles);
-	m_cycle_steal_timer->adjust(ANTIC_TIME_FROM_CYCLES(CYCLES_HSYNC - CYCLES_HSTART - m_steal_cycles));
+	/* the CPU is held for this line's DMA cycle by cycle (build_dma_map), not here */
+	m_steal_cycles = 0;
+	m_line_rendered = true;
 }
 
 
@@ -2053,6 +2073,7 @@ void antic_device::LMS(int new_cmd)
 		LOG("           LMS $%04x\n", addr);
 		/* steal two more clock cycles from the cpu */
 		m_steal_cycles += 2;
+		m_dl_addr_fetched = true;
 	}
 }
 
@@ -2087,6 +2108,7 @@ void antic_device::scanline_dma(int param)
 				m_doffs = (m_doffs + 1) & DOFFS;
 				/* steal at one clock cycle from the CPU for fetching the command */
 				m_steal_cycles += 1;
+				m_dl_fetched = true;
 				LOG("           ANTIC CMD $%02x\n", new_cmd);
 				/* command 1 .. 15 ? */
 				if (new_cmd & ANTIC_MODE)
@@ -2136,6 +2158,7 @@ void antic_device::scanline_dma(int param)
 						new_cmd &= ANTIC_DLI;
 						break;
 					case 0x01:
+						m_dl_addr_fetched = true;   /* a jump always fetches its address */
 						/* ANTIC "jump" with DLI: issue interrupt immediately */
 						if( new_cmd & ANTIC_DLI )
 						{
@@ -2290,6 +2313,149 @@ void antic_device::scanline_dma(int param)
 
 /*****************************************************************************
  *
+ *  ANTIC DMA, cycle by cycle
+ *
+ *  What holds the bus on each of the line's 114 cycles, as the Altirra Hardware
+ *  Reference Manual documents it (sections 4.11-4.14, after the AtariAge "ANTIC DMA
+ *  timings" measurements):
+ *
+ *    cycle 0       missile DMA (forced on by player DMA), scan lines 8-247
+ *    cycle 1       display list instruction, on the first line of a mode line
+ *    cycles 2-5    player DMA
+ *    cycles 6-7    LMS or jump address
+ *    playfield     mapped modes fetch every 8 (8-9), 4 (A-C) or 2 (D-F) cycles on the first
+ *                  line only, from cycle 28/20/12 (narrow/normal/wide); character modes
+ *                  fetch names every 2 (2-5) or 4 (6-7) cycles from 26/18/10 on the first
+ *                  line, and character data 3 cycles after each name on every line.
+ *                  Horizontal scrolling widens the window one step and delays it a cycle
+ *                  per two color clocks; nothing is fetched on the bus from cycle 106 on.
+ *    refresh       nine cycles, 25 and every 4 after; a blocked one waits for the next
+ *                  free cycle, and while one waits any other blocked one is dropped
+ *
+ *  Checked: a GR.0 screen leaves the CPU 63.7% of the cycles, the manual's "64%
+ *  (1.14Mcycles/sec)"; refresh alone leaves 92.1%, its "92%".
+ *
+ *****************************************************************************/
+
+void antic_device::build_dma_map()
+{
+	static const uint8_t rate[16] = { 0, 0, 2, 2, 2, 2, 4, 4, 8, 8, 4, 4, 4, 2, 2, 2 };
+	static const uint8_t window[4] = { 0, 64, 80, 96 };
+	static const uint8_t map_start[4] = { 0, 28, 20, 12 };
+	static const uint8_t chr_start[4] = { 0, 26, 18, 10 };
+
+	std::fill(std::begin(m_dma_busy), std::end(m_dma_busy), DMA_FREE);
+	bool const visible = m_scanline >= VBL_END && m_scanline < VBL_START;
+
+	if( visible && (m_w.dmactl & (DMA_PLAYER | DMA_MISSILE)) )
+	{
+		m_dma_busy[0] = DMA_PM;
+		if( m_w.dmactl & DMA_PLAYER )
+			for( int c = 2; c <= 5; c++ )
+				m_dma_busy[c] = DMA_PM;
+	}
+	if( m_dl_fetched )
+	{
+		m_dma_busy[1] = DMA_DL;
+		if( m_dl_addr_fetched )
+			m_dma_busy[6] = m_dma_busy[7] = DMA_DL;
+	}
+
+	int const mode = m_cmd & ANTIC_MODE;
+	int width = m_w.dmactl & 3;
+	if( visible && (m_w.dmactl & DMA_ANTIC) && mode >= 2 && width )
+	{
+		bool const first = m_dl_fetched;
+		int delay = 0;
+		int const fetches = window[width] / rate[mode];
+		if( m_cmd & ANTIC_HSCR )
+		{
+			if( width < 3 )
+				width++;
+			delay = m_w.hscrol >> 1;
+		}
+		int const count = (m_cmd & ANTIC_HSCR) ? window[width] / rate[mode] : fetches;
+		if( mode <= 7 )
+		{
+			int const s = chr_start[width] + delay;
+			for( int k = 0; k < count; k++ )
+			{
+				int const c = s + k * rate[mode];
+				if( first && c < 106 )
+					m_dma_busy[c] = DMA_PF;
+				if( c + 3 < 106 )
+					m_dma_busy[c + 3] = DMA_CHR;
+			}
+		}
+		else if( first )
+		{
+			int const s = map_start[width] + delay;
+			for( int k = 0; k < count; k++ )
+			{
+				int const c = s + k * rate[mode];
+				if( c < 106 )
+					m_dma_busy[c] = DMA_PF;
+			}
+		}
+	}
+
+	/* refresh: 25 and every 4 after; one blocked cycle waits, others blocked meanwhile are lost */
+	bool pending = false;
+	for( int c = 0; c < CYCLES_PER_LINE; c++ )
+	{
+		if( c >= 25 && c <= 57 && ((c - 25) & 3) == 0 )
+			pending = true;
+		if( pending && m_dma_busy[c] == DMA_FREE )
+		{
+			m_dma_busy[c] = DMA_REFRESH;
+			pending = false;
+		}
+	}
+
+	/* runs of busy cycles, each one a halt of the CPU */
+	m_dma_runs = 0;
+	for( int c = 0; c < CYCLES_PER_LINE; )
+	{
+		if( m_dma_busy[c] == DMA_FREE )
+		{
+			c++;
+			continue;
+		}
+		int const start = c;
+		while( c < CYCLES_PER_LINE && m_dma_busy[c] != DMA_FREE )
+			c++;
+		m_dma_run_start[m_dma_runs] = start;
+		m_dma_run_len[m_dma_runs] = c - start;
+		m_dma_runs++;
+	}
+	m_dma_run = 0;
+	schedule_dma_run(0);
+}
+
+void antic_device::schedule_dma_run(int from)
+{
+	if( m_dma_run >= m_dma_runs )
+	{
+		m_dma_timer->adjust(attotime::never);
+		return;
+	}
+	attotime const at = m_line_start + ANTIC_TIME_FROM_CYCLES(m_dma_run_start[m_dma_run]);
+	attotime const now = machine().time();
+	m_dma_timer->adjust(at > now ? at - now : attotime::zero);
+}
+
+TIMER_CALLBACK_MEMBER( antic_device::dma_cycles )
+{
+	/* hold the CPU for this run of DMA cycles, then wait for the next run */
+	int const len = m_dma_run_len[m_dma_run];
+	m_maincpu->spin_until_time(ANTIC_TIME_FROM_CYCLES(len));
+	m_dma_run++;
+	schedule_dma_run(0);
+}
+
+
+/*****************************************************************************
+ *
  *  Generic Atari Interrupt Dispatcher
  *  This is called once per scanline and handles:
  *  vertical blank interrupt
@@ -2301,11 +2467,18 @@ void antic_device::generic_interrupt(int button_count)
 {
 	LOG("ANTIC #%3d @cycle #%d scanline interrupt\n", m_scanline, cycle());
 
+	/* cycle 0 of the line: the missile DMA slot */
+	m_line_start = machine().time();
+	m_dl_fetched = m_dl_addr_fetched = false;
+	m_line_done_timer->adjust(ANTIC_TIME_FROM_CYCLES(CYCLES_WSYNC));
+
 	if( m_scanline < VBL_START )
 	{
 		scanline_dma(0);
+		build_dma_map();
 		return;
 	}
+	build_dma_map();
 
 	if( m_scanline == VBL_START )
 	{

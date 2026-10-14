@@ -236,7 +236,7 @@ static const a800_slot slot_list[] =
 	{ A800_SPARTADOS, "a800_sparta" },
 	{ A800_SPARTADOS_128KB, "a800_sparta_128kb" },
 	{ A800_TURBO,     "a800_turbo" },
-	{ A800_BLIZZARD,  "a800_blizzard" },
+	{ A800_BLIZZARD_32KB, "a800_blizzard_32kb" },
 	{ A800_TELELINK2, "a800_tlink2" },
 	{ A800_ULTRACART, "a800_ultracart" },
 	{ A800_ATRAX,     "a800_atrax" },
@@ -280,6 +280,179 @@ static const char *a800_get_slot(int type)
 	return "a800_8k";
 }
 
+
+//-------------------------------------------------
+//  CART headers (.car)
+//
+//  The Atari800 emulator's format: "CART", a type, a checksum of the data (the sum of its
+//  bytes), four unused bytes, then the ROM. The types are listed in its DOC/cart.txt; the table
+//  below is that list, so a header MAME cannot run is named rather than numbered.
+//-------------------------------------------------
+
+namespace {
+
+struct car_type
+{
+	uint32_t id;
+	bool a5200;
+	uint32_t size_kb;
+	const char *name;
+};
+
+const car_type car_types[] =
+{
+	{  1, false,     8, "Standard 8 KB cartridge" },
+	{  2, false,    16, "Standard 16 KB cartridge" },
+	{  3, false,    16, "OSS two chip 16 KB cartridge (034M)" },
+	{  4, true ,    32, "Standard 32 KB 5200 cartridge" },
+	{  5, false,    32, "DB 32 KB cartridge" },
+	{  6, true ,    16, "Two chip 16 KB 5200 cartridge" },
+	{  7, true ,    40, "Bounty Bob Strikes Back 40 KB 5200 cartridge" },
+	{  8, false,    64, "64 KB Williams cartridge" },
+	{  9, false,    64, "Express 64 KB cartridge" },
+	{ 10, false,    64, "Diamond 64 KB cartridge" },
+	{ 11, false,    64, "SpartaDOS X 64 KB cartridge" },
+	{ 12, false,    32, "XEGS 32 KB cartridge" },
+	{ 13, false,    64, "XEGS 64 KB cartridge" },
+	{ 14, false,   128, "XEGS 128 KB cartridge" },
+	{ 15, false,    16, "OSS one chip 16 KB cartridge" },
+	{ 16, true ,    16, "One chip 16 KB 5200 cartridge" },
+	{ 17, false,   128, "Atrax 128 KB cartridge" },
+	{ 18, false,    40, "Bounty Bob Strikes Back 40 KB cartridge" },
+	{ 19, true ,     8, "Standard 8 KB 5200 cartridge" },
+	{ 20, true ,     4, "Standard 4 KB 5200 cartridge" },
+	{ 21, false,     8, "Right slot 8 KB cartridge" },
+	{ 22, false,    32, "32 KB Williams cartridge" },
+	{ 23, false,   256, "XEGS 256 KB cartridge" },
+	{ 24, false,   512, "XEGS 512 KB cartridge" },
+	{ 25, false,  1024, "XEGS 1 MB cartridge" },
+	{ 26, false,    16, "MegaCart 16 KB cartridge" },
+	{ 27, false,    32, "MegaCart 32 KB cartridge" },
+	{ 28, false,    64, "MegaCart 64 KB cartridge" },
+	{ 29, false,   128, "MegaCart 128 KB cartridge" },
+	{ 30, false,   256, "MegaCart 256 KB cartridge" },
+	{ 31, false,   512, "MegaCart 512 KB cartridge" },
+	{ 32, false,  1024, "MegaCart 1 MB cartridge" },
+	{ 33, false,    32, "Switchable XEGS 32 KB cartridge" },
+	{ 34, false,    64, "Switchable XEGS 64 KB cartridge" },
+	{ 35, false,   128, "Switchable XEGS 128 KB cartridge" },
+	{ 36, false,   256, "Switchable XEGS 256 KB cartridge" },
+	{ 37, false,   512, "Switchable XEGS 512 KB cartridge" },
+	{ 38, false,  1024, "Switchable XEGS 1 MB cartridge" },
+	{ 39, false,     8, "Phoenix 8 KB cartridge" },
+	{ 40, false,    16, "Blizzard 16 KB cartridge" },
+	{ 41, false,   128, "Atarimax 128 KB Flash cartridge" },
+	{ 42, false,  1024, "Atarimax 1 MB Flash cartridge" },
+	{ 43, false,   128, "SpartaDOS X 128 KB cartridge" },
+	{ 44, false,     8, "OSS 8 KB cartridge" },
+	{ 45, false,    16, "OSS two chip 16 KB cartridge (043M)" },
+	{ 46, false,     4, "Blizzard 4 KB cartridge" },
+	{ 47, false,    32, "AST 32 KB cartridge" },
+	{ 48, false,    64, "Atrax SDX 64 KB cartridge" },
+	{ 49, false,   128, "Atrax SDX 128 KB cartridge" },
+	{ 50, false,    64, "Turbosoft 64 KB cartridge" },
+	{ 51, false,   128, "Turbosoft 128 KB cartridge" },
+	{ 52, false,    32, "Ultracart 32 KB cartridge" },
+	{ 53, false,     8, "Low bank 8 KB cartridge" },
+	{ 54, false,   128, "SIC! 128 KB cartridge" },
+	{ 55, false,   256, "SIC! 256 KB cartridge" },
+	{ 56, false,   512, "SIC! 512 KB cartridge" },
+	{ 57, false,     2, "Standard 2 KB cartridge" },
+	{ 58, false,     4, "Standard 4 KB cartridge" },
+	{ 59, false,     4, "Right slot 4 KB cartridge" },
+	{ 60, false,    32, "Blizzard 32 KB cartridge" },
+};
+
+const car_type *find_car_type(uint32_t id)
+{
+	for (auto const &t : car_types)
+		if (t.id == id)
+			return &t;
+	return nullptr;
+}
+
+// MAME's PCB for a CART type, or -1 when MAME has none
+int car_pcb(uint32_t id)
+{
+	switch (id)
+	{
+	case 1: case 57: case 58:   return A800_8K;            // 2 KB and 4 KB mirror through the 8 KB window
+	case 2:                     return A800_16K;
+	case 3:                     return A800_OSS034M;
+	case 4:                     return A5200_32K;
+	case 6:                     return A5200_16K_2CHIPS;
+	case 7:                     return A5200_BBSB;
+	case 8: case 22:            return A800_WILLIAMS;      // 64 KB and 32 KB: the bank mask follows the size
+	case 9:                     return A800_EXPRESS;       // $D57x
+	case 10:                    return A800_DIAMOND;       // $D5Dx
+	case 11:                    return A800_SPARTADOS;
+	case 12: case 13: case 14: case 23: case 24: case 25:
+	case 33: case 34: case 35: case 36: case 37: case 38:
+	                            return A800_XEGS;          // the bank mask follows the size
+	case 15:                    return A800_OSSM091;
+	case 16:                    return A5200_16K;
+	case 17:                    return A800_ATRAX;
+	case 18:                    return A800_BBSB;
+	case 19:                    return A5200_8K;
+	case 20:                    return A5200_4K;
+	case 21: case 59:           return A800_8K_RIGHT;
+	case 39:                    return A800_PHOENIX;
+	case 40:                    return A800_BLIZZARD;
+	case 41:                    return ATARIMAX_MAXFLASH_128KB;
+	case 42:                    return ATARIMAX_MAXFLASH_1MB;
+	case 43:                    return A800_SPARTADOS_128KB;
+	case 44:                    return A800_OSS8K;
+	case 45:                    return A800_OSS043M;
+	case 50: case 51:           return A800_TURBO;
+	case 52:                    return A800_ULTRACART;
+	case 54:                    return SIC_128KB;
+	case 55:                    return SIC_256KB;
+	case 56:                    return SIC_512KB;
+	case 60:                    return A800_BLIZZARD_32KB;
+	case 69:                    return A800_ADAWLIAH;
+	default:                    return -1;
+	}
+}
+
+bool is_car_header(const uint8_t *header, uint64_t len)
+{
+	return len >= 0x10 && !memcmp(header, "CART", 4);
+}
+
+// say something about a header once, though MAME asks for the slot more than once
+void car_warn(std::string const &text)
+{
+	static std::string last;
+	if (text != last)
+		osd_printf_warning("%s\n", text);
+	last = text;
+}
+
+// the PCB for a header; `verbose` says what does not fit (when the slot is chosen)
+int identify_car(const uint8_t *header, uint64_t datalen, bool verbose)
+{
+	uint32_t const id = get_u32be(&header[4]);
+	car_type const *const t = find_car_type(id);
+	std::string const name = t ? util::string_format("%s (CART type %u)", t->name, id) : util::string_format("CART type %u", id);
+	int pcb = car_pcb(id);
+	if (pcb < 0)
+	{
+		// not emulated: the plain cartridge its size would be, which at least shows the first bank
+		pcb = (t && t->a5200) ? (datalen > 0x4000 ? A5200_32K : datalen > 0x2000 ? A5200_16K : datalen > 0x1000 ? A5200_8K : A5200_4K)
+				: (datalen > 0x2000 ? A800_16K : A800_8K);
+		if (verbose)
+			car_warn(util::string_format("%s is not emulated by MAME; loading it as MAME's %s, which will not run it properly",
+					name, a800_get_slot(pcb)));
+	}
+	else if (verbose && id >= 33 && id <= 38)
+		car_warn(util::string_format("%s: loaded as XEGS; the switch that turns the cartridge off is not emulated", name));
+	if (verbose && t && uint64_t(t->size_kb) * 1024 != datalen)
+		car_warn(util::string_format("%s should hold %u KB, but the file has %u bytes after its header", name, t->size_kb, uint32_t(datalen)));
+	return pcb;
+}
+
+} // anonymous namespace
+
 std::pair<std::error_condition, std::string> a800_cart_slot_device::call_load()
 {
 	if (m_cart)
@@ -303,13 +476,13 @@ std::pair<std::error_condition, std::string> a800_cart_slot_device::call_load()
 		{
 			len = length();
 
-			// check whether there is an header, to identify the cart type
-			if ((len % 0x1000) == 0x10)
+			// a CART header names the cart type (see identify_car)
+			uint8_t header[16] = { 0 };
+			bool const has_header = len >= 0x10 && fread(header, 0x10) == 0x10 && is_car_header(header, len);
+			if (has_header)
 			{
-				uint8_t header[16];
-				fread(header, 0x10);
-				m_type = identify_cart_type(header);
-				len -= 0x10;    // in identify_cart_type the first 0x10 bytes are read, so we need to adjust here
+				m_type = identify_car(header, len - 0x10, false);
+				len -= 0x10;
 			}
 			else    // otherwise try to guess based on size
 			{
@@ -327,8 +500,18 @@ std::pair<std::error_condition, std::string> a800_cart_slot_device::call_load()
 					m_type = A5200_16K_2CHIPS;
 			}
 
+			if (!has_header)
+				fseek(0, SEEK_SET);
 			m_cart->rom_alloc(len);
 			fread(m_cart->get_rom_base(), len);
+			if (has_header)
+			{
+				uint32_t sum = 0;
+				for (uint32_t i = 0; i < len; i++)
+					sum += m_cart->get_rom_base()[i];
+				if (sum != get_u32be(&header[8]))
+					osd_printf_warning("CART header checksum is %08X, the data sums to %08X: the image may be damaged\n", get_u32be(&header[8]), sum);
+			}
 		}
 
 		logerror("%s loaded cartridge '%s' size %dK\n", machine().system().name, filename(), len/1024);
@@ -359,13 +542,13 @@ std::pair<std::error_condition, std::string> a5200_cart_slot_device::call_load()
 		{
 			len = length();
 
-			// check whether there is an header, to identify the cart type
-			if ((len % 0x1000) == 0x10)
+			// a CART header names the cart type (see identify_car)
+			uint8_t header[16] = { 0 };
+			bool const has_header = len >= 0x10 && fread(header, 0x10) == 0x10 && is_car_header(header, len);
+			if (has_header)
 			{
-				uint8_t header[16];
-				fread(header, 0x10);
-				m_type = identify_cart_type(header);
-				len -= 0x10;    // in identify_cart_type the first 0x10 bytes are read, so we need to adjust here
+				m_type = identify_car(header, len - 0x10, false);
+				len -= 0x10;
 			}
 			else    // otherwise try to guess based on size
 			{
@@ -383,8 +566,18 @@ std::pair<std::error_condition, std::string> a5200_cart_slot_device::call_load()
 					m_type = A5200_16K_2CHIPS;
 			}
 
+			if (!has_header)
+				fseek(0, SEEK_SET);
 			m_cart->rom_alloc(len);
 			fread(m_cart->get_rom_base(), len);
+			if (has_header)
+			{
+				uint32_t sum = 0;
+				for (uint32_t i = 0; i < len; i++)
+					sum += m_cart->get_rom_base()[i];
+				if (sum != get_u32be(&header[8]))
+					osd_printf_warning("CART header checksum is %08X, the data sums to %08X: the image may be damaged\n", get_u32be(&header[8]), sum);
+			}
 		}
 
 		logerror("%s loaded cartridge '%s' size %dK\n", machine().system().name, filename(), len/1024);
@@ -408,230 +601,12 @@ void a5200_cart_slot_device::call_unload()
 
 int a800_cart_slot_device::identify_cart_type(const uint8_t *header) const
 {
-	int type = A800_8K;
-
-	// TODO: canonically applies to .car extension only, have 10 bytes extra header on top
-
-	// check CART format
-	if (strncmp((const char *)header, "CART", 4))
-		fatalerror("Invalid header detected!\n");
-
-	switch (get_u32be(&header[4]))
-	{
-		case 1:
-			type = A800_8K;
-			break;
-		case 2:
-			type = A800_16K;
-			break;
-		case 3:
-			type = A800_OSS034M;
-			break;
-		case 8:
-			type = A800_WILLIAMS;
-			break;
-		case 9:
-			type = A800_DIAMOND;
-			break;
-		case 10:
-			type = A800_EXPRESS;
-			break;
-		case 11:
-			type = A800_SPARTADOS;
-			break;
-		case 12:
-			type = A800_XEGS;
-			break;
-		case 15:
-			type = A800_OSSM091;
-			break;
-		case 17:
-			type = A800_ATRAX;
-			break;
-		case 18:
-			type = A800_BBSB;
-			break;
-		case 21:
-			type = A800_8K_RIGHT;
-			break;
-		case 39:
-			type = A800_PHOENIX;
-			break;
-		case 40:
-			type = A800_BLIZZARD;
-			break;
-		case 41:
-			type = ATARIMAX_MAXFLASH_128KB;
-			break;
-		case 42:
-			type = ATARIMAX_MAXFLASH_1MB;
-			break;
-		case 43:
-			type = A800_SPARTADOS_128KB;
-			break;
-		case 44:
-			type = A800_OSS8K;
-			break;
-		case 50:
-			type = A800_TURBO;
-			break;
-		case 51:
-			type = A800_TURBO;
-			break;
-		case 52:
-			type = A800_ULTRACART;
-			break;
-		case 54:
-			type = SIC_128KB;
-			break;
-		case 55:
-			type = SIC_256KB;
-			break;
-		case 56:
-			type = SIC_512KB;
-			break;
-		case 69:
-			type = A800_ADAWLIAH;
-			break;
-		// Atari 5200 CART files
-		case 4:
-			type = A5200_32K;
-			break;
-		case 16:
-			type = A5200_16K;
-			break;
-		case 19:
-			type = A5200_8K;
-			break;
-		case 20:
-			type = A5200_4K;
-			break;
-		case 6:
-			type = A5200_16K_2CHIPS;
-			break;
-		case 7:
-			type = A5200_BBSB;
-			break;
-		default:
-			osd_printf_info("Cart type \"%d\" is currently unsupported.\n", get_u32be(&header[4]));
-			break;
-	}
-
-	return type;
+	return identify_car(header, 0, false);   // the size is checked, and reported, when the slot is chosen
 }
 
 int a5200_cart_slot_device::identify_cart_type(const uint8_t *header) const
 {
-	int type = A800_8K;
-
-	// TODO: canonically applies to .car extension only, have 10 bytes extra header on top
-
-	// check CART format
-	if (strncmp((const char *)header, "CART", 4))
-		fatalerror("Invalid header detected!\n");
-
-	switch (get_u32be(&header[4]))
-	{
-		case 1:
-			type = A800_8K;
-			break;
-		case 2:
-			type = A800_16K;
-			break;
-		case 3:
-			type = A800_OSS034M;
-			break;
-		case 8:
-			type = A800_WILLIAMS;
-			break;
-		case 9:
-			type = A800_DIAMOND;
-			break;
-		case 10:
-			type = A800_EXPRESS;
-			break;
-		case 11:
-			type = A800_SPARTADOS;
-			break;
-		case 12:
-			type = A800_XEGS;
-			break;
-		case 15:
-			type = A800_OSSM091;
-			break;
-		case 17:
-			type = A800_ATRAX;
-			break;
-		case 18:
-			type = A800_BBSB;
-			break;
-		case 21:
-			type = A800_8K_RIGHT;
-			break;
-		case 39:
-			type = A800_PHOENIX;
-			break;
-		case 40:
-			type = A800_BLIZZARD;
-			break;
-		case 41:
-			type = ATARIMAX_MAXFLASH_128KB;
-			break;
-		case 42:
-			type = ATARIMAX_MAXFLASH_1MB;
-			break;
-		case 43:
-			type = A800_SPARTADOS_128KB;
-			break;
-		case 44:
-			type = A800_OSS8K;
-			break;
-		case 50:
-			type = A800_TURBO;
-			break;
-		case 51:
-			type = A800_TURBO;
-			break;
-		case 52:
-			type = A800_ULTRACART;
-			break;
-		case 54:
-			type = SIC_128KB;
-			break;
-		case 55:
-			type = SIC_256KB;
-			break;
-		case 56:
-			type = SIC_512KB;
-			break;
-		case 69:
-			type = A800_ADAWLIAH;
-			break;
-		// Atari 5200 CART files
-		case 4:
-			type = A5200_32K;
-			break;
-		case 16:
-			type = A5200_16K;
-			break;
-		case 19:
-			type = A5200_8K;
-			break;
-		case 20:
-			type = A5200_4K;
-			break;
-		case 6:
-			type = A5200_16K_2CHIPS;
-			break;
-		case 7:
-			type = A5200_BBSB;
-			break;
-		default:
-			osd_printf_info("Cart type \"%d\" is currently unsupported.\n", get_u32be(&header[4]));
-			break;
-	}
-
-	return type;
+	return identify_car(header, 0, false);   // the size is checked, and reported, when the slot is chosen
 }
 
 /*-------------------------------------------------
@@ -650,12 +625,13 @@ std::string a800_cart_slot_device::get_default_card_software(get_default_card_so
 		hook.image_file()->length(len); // FIXME: check error return
 
 		int type = is_xegs ? A800_XEGS : A800_8K;
-		// check whether there is an header, to identify the cart type
-		if ((len % 0x1000) == 0x10)
-		{
-			uint8_t head[0x10];
+		// a CART header names the cart type
+		uint8_t head[0x10] = { 0 };
+		if (len >= 0x10)
 			/*auto const [err, actual] =*/ read(*hook.image_file(), &head[0], 0x10); // FIXME: check error return or read returning short
-			type = identify_cart_type(&head[0]);
+		if (is_car_header(head, len))
+		{
+			type = identify_car(&head[0], len - 0x10, true);
 		}
 		else    // otherwise try to guess based on size
 		{
@@ -694,13 +670,14 @@ std::string a5200_cart_slot_device::get_default_card_software(get_default_card_s
 		uint64_t len;
 		hook.image_file()->length(len); // FIXME: check error return
 
-		// check whether there is an header, to identify the cart type
+		// a CART header names the cart type
 		int type = A5200_8K;
-		if ((len % 0x1000) == 0x10)
-		{
-			uint8_t head[0x10];
+		uint8_t head[0x10] = { 0 };
+		if (len >= 0x10)
 			/*auto const [err, actual] =*/ read(*hook.image_file(), &head[0], 0x10); // FIXME: check error return or read returning short
-			type = identify_cart_type(&head[0]);
+		if (is_car_header(head, len))
+		{
+			type = identify_car(&head[0], len - 0x10, true);
 		}
 		else
 		{
