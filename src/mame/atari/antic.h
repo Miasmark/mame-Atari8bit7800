@@ -185,6 +185,24 @@ private:
 	TIMER_CALLBACK_MEMBER( line_done );
 	TIMER_CALLBACK_MEMBER( steal_cycles );
 	TIMER_CALLBACK_MEMBER( scanline_render );
+	TIMER_CALLBACK_MEMBER( dma_cycles );
+
+	// ANTIC's DMA, a cycle at a time: what holds the bus on each of a scan line's 114 cycles,
+	// after the Altirra Hardware Reference Manual (4.11-4.14) and the AtariAge "ANTIC DMA
+	// timings" measurements it draws on. The CPU is held for each run of busy cycles.
+	enum { DMA_FREE = 0, DMA_PM, DMA_DL, DMA_PF, DMA_CHR, DMA_REFRESH };
+	void build_dma_map();
+	void schedule_dma_run(int from);
+	uint8_t   m_dma_busy[114];      /* owner of each cycle of the current line */
+	int       m_dma_run;            /* index of the next busy run to halt the CPU for */
+	int       m_dma_runs;
+	uint8_t   m_dma_run_start[114];
+	uint8_t   m_dma_run_len[114];
+	attotime  m_line_start;         /* when the current line's cycle 0 was */
+	bool      m_dl_fetched;         /* the display list instruction was fetched this line */
+	bool      m_dl_addr_fetched;    /* ... and an LMS or jump address after it */
+	bool      m_line_rendered;      /* scanline_render ran this line */
+	emu_timer *m_dma_timer;
 
 	void render(address_space &space, int param1, int param2, int param3);
 
