@@ -173,6 +173,7 @@ protected:
 	emu_timer *m_visible_timer = nullptr;
 	int m_pixelx = 0;
 	bool m_cart_ram_exec_warned = false;
+	uint8_t m_skip_bios = 0;        // the -bios number of "skip" on this machine
 
 	required_device<m6502_device> m_maincpu;
 	required_device<tia_device> m_tia;
@@ -1494,6 +1495,9 @@ void a7800_state::machine_start()
 		}
 	}
 
+	if (system_bios() == m_skip_bios)
+		logerror("BIOS skipped: the cartridge starts from its reset vector, as Atari's NTSC BIOS hands over\n");
+
 	m_dma_start_timer = timer_alloc(FUNC(a7800_state::maria_startdma), this);
 	m_visible_timer = timer_alloc(FUNC(a7800_state::maria_startvisible), this);
 	save_item(NAME(m_pixelx));
@@ -1506,6 +1510,23 @@ void a7800_state::machine_reset()
 	m_maria_flag = false;
 	m_bios_view.select(0);
 	m_maria_bios_view.select(0);
+
+	if (system_bios() == m_skip_bios)
+	{
+		// no BIOS: start where Atari's NTSC BIOS leaves a signed cartridge (docs/bios.md in
+		// the a7800 toolkit, measured in MAME): INPTCTRL $16 (MARIA on, BIOS off, not locked),
+		// X = SP = $16, decimal set, interrupts masked, MARIA's DMA off (as at reset).
+		// The CPU's reset sequence still runs, so it takes the cartridge's own reset vector;
+		// it drops SP by 3 and sets I. The signature isn't checked, so an unsigned
+		// cartridge starts the same way. RAM is left as MAME has it, not as the BIOS's
+		// self-test and hash would.
+		m_ctrl_reg = 0x16;
+		m_bios_view.disable();
+		m_maria_bios_view.disable();
+		m_maincpu->set_state_int(M6502_S, 0x0116 + 3);
+		m_maincpu->set_state_int(M6502_X, 0x16);
+		m_maincpu->set_state_int(M6502_P, m_maincpu->state_int(M6502_P) | 0x08);
+	}
 }
 
 void a7800_state::a7800_common(machine_config &config, uint32_t clock)
@@ -1579,11 +1600,14 @@ ROM_START( a7800 )
 	ROMX_LOAD("7800.u7", 0x3000, 0x1000, CRC(5d13730c) SHA1(d9d134bb6b36907c615a594cc7688f7bfcef5b43), ROM_BIOS(0))
 	ROM_SYSTEM_BIOS( 1, "a7800pr", "Atari 7800 (prototype with Asteroids)" ) // TODO: is this really a prototype? notice the ROM code is almost the same as the released PAL version
 	ROMX_LOAD("c300558-001a.u7", 0x0000, 0x4000, CRC(a0e10edf) SHA1(14584b1eafe9721804782d4b1ac3a4a7313e455f), ROM_BIOS(1))
+	ROM_SYSTEM_BIOS( 2, "skip", "None (boot straight into the cartridge)" )
 ROM_END
 
 ROM_START( a7800p )
 	ROM_REGION(0x4000, "maincpu", ROMREGION_ERASEFF)
-	ROM_LOAD("c300558-001b.u7", 0x0000, 0x4000, CRC(d5b61170) SHA1(5a140136a16d1d83e4ff32a19409ca376a8df874))
+	ROM_SYSTEM_BIOS( 0, "a7800p", "Atari 7800 (PAL)" )
+	ROMX_LOAD("c300558-001b.u7", 0x0000, 0x4000, CRC(d5b61170) SHA1(5a140136a16d1d83e4ff32a19409ca376a8df874), ROM_BIOS(0))
+	ROM_SYSTEM_BIOS( 1, "skip", "None (boot straight into the cartridge)" )
 ROM_END
 
 
@@ -1595,6 +1619,7 @@ void a7800_ntsc_state::init_a7800_ntsc()
 {
 	m_ispal = false;
 	m_lines = 263;
+	m_skip_bios = 3;  // system_bios() counts from 1
 	m_p1_one_button = true;
 	m_p2_one_button = true;
 }
@@ -1604,6 +1629,7 @@ void a7800_pal_state::init_a7800_pal()
 {
 	m_ispal = true;
 	m_lines = 313;
+	m_skip_bios = 2;
 	m_p1_one_button = true;
 	m_p2_one_button = true;
 }
