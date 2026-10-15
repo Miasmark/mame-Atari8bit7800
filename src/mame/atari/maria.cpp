@@ -70,6 +70,7 @@ DEFINE_DEVICE_TYPE(ATARI_MARIA, atari_maria_device, "atari_maria", "Atari MARIA"
 atari_maria_device::atari_maria_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
 	: device_t(mconfig, ATARI_MARIA, tag, owner, clock)
 	, device_video_interface(mconfig, *this)
+	, device_memory_interface(mconfig, *this)
 	, m_maria_palette{0}
 	, m_line_ram{0}
 	, m_active_buffer(0)
@@ -89,6 +90,7 @@ atari_maria_device::atari_maria_device(const machine_config &mconfig, const char
 	, m_rm(0)
 	, m_dli(false)
 	, m_charbase(0)
+	, m_dma_config("dma", ENDIANNESS_LITTLE, 8, 16, 0)
 	, m_dmaspace(*this, finder_base::DUMMY_TAG, -1, 8)
 	, m_dma_wait_cb(*this)
 	, m_halt_cb(*this)
@@ -96,6 +98,11 @@ atari_maria_device::atari_maria_device(const machine_config &mconfig, const char
 {
 }
 
+
+device_memory_interface::space_config_vector atari_maria_device::memory_space_config() const
+{
+	return space_config_vector { std::make_pair(AS_DMA, &m_dma_config) };
+}
 
 void atari_maria_device::device_start()
 {
