@@ -8,13 +8,19 @@
 
 // ======================> atari_maria_device
 
-class atari_maria_device :  public device_t, public device_video_interface
+class atari_maria_device :  public device_t, public device_video_interface, public device_memory_interface
 {
 public:
 	// construction/destruction
 	atari_maria_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock = 0);
 
 	template <typename T> void set_dmaspace_tag(T &&tag, int spacenum) { m_dmaspace.set_tag(std::forward<T>(tag), spacenum); }
+
+	// MARIA's own view of the bus, "dma" (address space 0): when the driver gives it a map and
+	// points the DMA at it (set_dmaspace_tag(*this, 0)), MARIA's fetches are its own memory
+	// accesses -- a watchpoint or Lua tap on the CPU's space no longer sees them, and one on this
+	// space sees only them
+	static constexpr int AS_DMA = 0;
 
 	auto dma_wait_callback() { return m_dma_wait_cb.bind(); }
 	auto halt_callback() { return m_halt_cb.bind(); }
@@ -24,7 +30,7 @@ public:
 	void startdma(int lines);
 	void display_visible(int pixelx);
 
-	// true while MARIA, not the CPU, is the one reading (the DMA goes through the CPU's address space)
+	// true while MARIA, not the CPU, is the one reading (when the DMA goes through the CPU's address space)
 	bool in_dma_read() const { return m_in_dma_read; }
 	// the CPU address range of a bankset cartridge (its ROM and RAM): display lists fetched from it
 	// read as empty (see read_dl); they belong in console RAM
@@ -38,6 +44,7 @@ public:
 protected:
 	// device-level overrides
 	virtual void device_start() override ATTR_COLD;
+	virtual space_config_vector memory_space_config() const override;
 	virtual void device_reset() override ATTR_COLD;
 
 private:
@@ -72,6 +79,7 @@ private:
 	bitmap_ind16 m_bitmap;
 
 	mutable bool m_in_dma_read = false;
+	address_space_config m_dma_config;
 	offs_t m_cart_ram_lo = 1;
 	offs_t m_cart_ram_hi = 0;      // an empty window until the driver sets one
 	bool m_dl_warned = false;

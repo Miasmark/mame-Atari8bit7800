@@ -130,7 +130,8 @@ public:
 		m_io_console_buttons(*this, "CONSOLE"),
 		m_cart(*this, "cartslot"),
 		m_screen(*this, "screen"),
-		m_bios_view(*this, "bios_view")
+		m_bios_view(*this, "bios_view"),
+		m_maria_bios_view(*this, "maria_bios_view")
 	{
 	}
 
@@ -157,6 +158,7 @@ protected:
 	void dli_cb(int state);
 
 	void a7800_mem(address_map &map) ATTR_COLD;
+	void maria_mem(address_map &map) ATTR_COLD;
 
 	int32_t m_lines = 263;
 	bool m_ispal = false;
@@ -182,6 +184,7 @@ protected:
 	required_device<a78_cart_slot_device> m_cart;
 	required_device<screen_device> m_screen;
 	memory_view m_bios_view;
+	memory_view m_maria_bios_view;  // the same BIOS mapping, in MARIA's own address space
 };
 
 class a7800_ntsc_state : public a7800_state
@@ -302,9 +305,15 @@ void a7800_state::tia_w(offs_t offset, uint8_t data)
 			m_ctrl_lock = BIT(data, 0);
 			m_ctrl_reg = data;
 			if (BIT(m_ctrl_reg, 2))
+			{
 				m_bios_view.disable();
+				m_maria_bios_view.disable();
+			}
 			else
+			{
 				m_bios_view.select(0);
+				m_maria_bios_view.select(0);
+			}
 		}
 	}
 	m_tia->tia_sound_w(offset, data);
@@ -370,13 +379,13 @@ void a7800_state::dli_cb(int state)
 
 void a7800_state::a7800_mem(address_map &map)
 {
-	map(0x0000, 0x01ff).mirror(0x2000).ram(); // 0x40-0xff, 0x140-0x1ff are mirrors of second 6116 chip
+	map(0x0000, 0x01ff).mirror(0x2000).ram().share("ram_2000"); // 0x40-0xff, 0x140-0x1ff are mirrors of second 6116 chip
 	map(0x0000, 0x001f).mirror(0x300).rw(FUNC(a7800_state::tia_r), FUNC(a7800_state::tia_w));
 	map(0x0020, 0x003f).mirror(0x300).rw(m_maria, FUNC(atari_maria_device::read), FUNC(atari_maria_device::write));
 	map(0x0280, 0x029f).mirror(0x160).m(m_riot, FUNC(mos6532_device::io_map));
 	map(0x0480, 0x04ff).mirror(0x100).m(m_riot, FUNC(mos6532_device::ram_map));
-	map(0x1800, 0x1fff).ram();
-	map(0x2200, 0x27ff).ram();  // 0x2000-0x21ff, installed in mirror above
+	map(0x1800, 0x1fff).ram().share("ram_1800");
+	map(0x2200, 0x27ff).ram().share("ram_2200");  // 0x2000-0x21ff, installed in mirror above
 								// According to the official Software Guide, the RAM at 0x2000 is
 								// repeatedly mirrored up to 0x3fff, but this is evidently incorrect
 								// because the High Score Cartridge maps ROM at 0x3000-0x3fff
@@ -388,6 +397,24 @@ void a7800_state::a7800_mem(address_map &map)
 	// TODO: actually 0x8000-0xffff?
 	map(0xc000, 0xffff).view(m_bios_view);    // here also the BIOS can be accessed
 	m_bios_view[0](0xc000, 0xffff).rom().region("maincpu", 0);
+}
+
+// What MARIA's DMA sees: the CPU's map, the same RAM (shared) and the same cartridge, but its own
+// address space, so its fetches are not the CPU's memory accesses -- a watchpoint or a Lua tap on
+// the CPU's program space sees only the CPU, one on MARIA's "dma" space only MARIA. Registers read
+// as they would through the CPU's space (MARIA reading them is a game's mistake, not its intent).
+void a7800_state::maria_mem(address_map &map)
+{
+	map(0x0000, 0x01ff).mirror(0x2000).ram().share("ram_2000");
+	map(0x0000, 0x001f).mirror(0x300).r(FUNC(a7800_state::tia_r));
+	map(0x0020, 0x003f).mirror(0x300).r(m_maria, FUNC(atari_maria_device::read));
+	map(0x0280, 0x029f).mirror(0x160).m(m_riot, FUNC(mos6532_device::io_map));
+	map(0x0480, 0x04ff).mirror(0x100).m(m_riot, FUNC(mos6532_device::ram_map));
+	map(0x1800, 0x1fff).ram().share("ram_1800");
+	map(0x2200, 0x27ff).ram().share("ram_2200");
+	map(0x4000, 0xffff).r(m_cart, FUNC(a78_cart_slot_device::read_40xx));
+	map(0xc000, 0xffff).view(m_maria_bios_view);
+	m_maria_bios_view[0](0xc000, 0xffff).rom().region("maincpu", 0);
 }
 
 
@@ -1411,7 +1438,9 @@ void a7800_state::machine_start()
 		case A78_HSC:
 			// ROM+NVRAM accesses for HiScore
 			m_maincpu->space(AS_PROGRAM).install_readwrite_handler(0x1000, 0x17ff, read8sm_delegate(*m_cart, FUNC(a78_cart_slot_device::read_10xx)), write8sm_delegate(*m_cart, FUNC(a78_cart_slot_device::write_10xx)));
+			m_maria->space(atari_maria_device::AS_DMA).install_read_handler(0x1000, 0x17ff, read8sm_delegate(*m_cart, FUNC(a78_cart_slot_device::read_10xx)));
 			m_maincpu->space(AS_PROGRAM).install_readwrite_handler(0x3000, 0x3fff, read8sm_delegate(*m_cart, FUNC(a78_cart_slot_device::read_30xx)), write8sm_delegate(*m_cart, FUNC(a78_cart_slot_device::write_30xx)));
+			m_maria->space(atari_maria_device::AS_DMA).install_read_handler(0x3000, 0x3fff, read8sm_delegate(*m_cart, FUNC(a78_cart_slot_device::read_30xx)));
 			break;
 		case A78_XB_BOARD:
 		case A78_TYPE0_POK450:
@@ -1421,6 +1450,7 @@ void a7800_state::machine_start()
 		case A78_VERSA_POK450:
 			// POKEY and RAM regs at 0x400-0x47f
 			m_maincpu->space(AS_PROGRAM).install_readwrite_handler(0x0400, 0x047f, read8sm_delegate(*m_cart, FUNC(a78_cart_slot_device::read_04xx)), write8sm_delegate(*m_cart, FUNC(a78_cart_slot_device::write_04xx)));
+			m_maria->space(atari_maria_device::AS_DMA).install_read_handler(0x0400, 0x047f, read8sm_delegate(*m_cart, FUNC(a78_cart_slot_device::read_04xx)));
 			break;
 		case A78_BANKSET_SG_BANKRAM:
 		case A78_BANKSET_BANKRAM:
@@ -1431,6 +1461,7 @@ void a7800_state::machine_start()
 		case A78_BANKSET_52K_POK4000:
 			// 52K halves reach down to $3000
 			m_maincpu->space(AS_PROGRAM).install_read_handler(0x3000, 0x3fff, read8sm_delegate(*m_cart, FUNC(a78_cart_slot_device::read_30xx)));
+			m_maria->space(atari_maria_device::AS_DMA).install_read_handler(0x3000, 0x3fff, read8sm_delegate(*m_cart, FUNC(a78_cart_slot_device::read_30xx)));
 			break;
 		case A78_TYPE0_POK800:
 		case A78_TYPE1_POK800:
@@ -1448,13 +1479,17 @@ void a7800_state::machine_start()
 			}
 			// POKEY at 0x800-0xfff
 			m_maincpu->space(AS_PROGRAM).install_readwrite_handler(0x0800, 0x0fff, read8sm_delegate(*m_cart, FUNC(a78_cart_slot_device::read_08xx)), write8sm_delegate(*m_cart, FUNC(a78_cart_slot_device::write_08xx)));
+			m_maria->space(atari_maria_device::AS_DMA).install_read_handler(0x0800, 0x0fff, read8sm_delegate(*m_cart, FUNC(a78_cart_slot_device::read_08xx)));
 			break;
 		case A78_XM_BOARD:
 			// POKEY and RAM and YM regs at 0x400-0x47f
 			m_maincpu->space(AS_PROGRAM).install_readwrite_handler(0x0400, 0x047f, read8sm_delegate(*m_cart, FUNC(a78_cart_slot_device::read_04xx)), write8sm_delegate(*m_cart, FUNC(a78_cart_slot_device::write_04xx)));
+			m_maria->space(atari_maria_device::AS_DMA).install_read_handler(0x0400, 0x047f, read8sm_delegate(*m_cart, FUNC(a78_cart_slot_device::read_04xx)));
 			// ROM+NVRAM accesses for HiScore
 			m_maincpu->space(AS_PROGRAM).install_readwrite_handler(0x1000, 0x17ff, read8sm_delegate(*m_cart, FUNC(a78_cart_slot_device::read_10xx)), write8sm_delegate(*m_cart, FUNC(a78_cart_slot_device::write_10xx)));
+			m_maria->space(atari_maria_device::AS_DMA).install_read_handler(0x1000, 0x17ff, read8sm_delegate(*m_cart, FUNC(a78_cart_slot_device::read_10xx)));
 			m_maincpu->space(AS_PROGRAM).install_readwrite_handler(0x3000, 0x3fff, read8sm_delegate(*m_cart, FUNC(a78_cart_slot_device::read_30xx)), write8sm_delegate(*m_cart, FUNC(a78_cart_slot_device::write_30xx)));
+			m_maria->space(atari_maria_device::AS_DMA).install_read_handler(0x3000, 0x3fff, read8sm_delegate(*m_cart, FUNC(a78_cart_slot_device::read_30xx)));
 			break;
 		}
 	}
@@ -1470,6 +1505,7 @@ void a7800_state::machine_reset()
 	m_ctrl_reg = 0;
 	m_maria_flag = false;
 	m_bios_view.select(0);
+	m_maria_bios_view.select(0);
 }
 
 void a7800_state::a7800_common(machine_config &config, uint32_t clock)
@@ -1488,7 +1524,8 @@ void a7800_state::a7800_common(machine_config &config, uint32_t clock)
 
 	ATARI_MARIA(config, m_maria);
 	m_maria->set_screen(m_screen);
-	m_maria->set_dmaspace_tag(m_maincpu, AS_PROGRAM);
+	m_maria->set_addrmap(atari_maria_device::AS_DMA, &a7800_state::maria_mem);
+	m_maria->set_dmaspace_tag(m_maria, atari_maria_device::AS_DMA);
 	m_maria->dma_wait_callback().set(FUNC(a7800_state::dma_wait_cb));
 	m_maria->halt_callback().set(FUNC(a7800_state::halt_cpu_cb));
 	m_maria->dli_callback().set(FUNC(a7800_state::dli_cb));
