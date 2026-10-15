@@ -497,6 +497,25 @@ std::pair<std::error_condition, std::string> a78_cart_slot_device::call_load()
 			m_cart->rom_alloc(len);
 			fread(m_cart->get_rom_base(), len);
 
+			// Activision images come in two orders. The software list's (and the "(OM)" .a78
+			// files') are the EPROM's, which a78_rom_act_device reads; the usual .a78 order ("(AM)",
+			// the a7800 fork's) has each pair of 8K blocks exchanged, so read MAME's way its vectors
+			// land in a block of $00 or $FF and the BIOS never hands over. Put such an image back in
+			// EPROM order, but only when its reset vector says so: one that already boots is left alone.
+			if (m_type == A78_ACTIVISION && len == 0x20000)
+			{
+				uint8_t *rom = m_cart->get_rom_base();
+				auto usable = [] (uint16_t v) { return v >= 0x4000 && v != 0xffff; };
+				uint16_t const eprom = get_u16le(&rom[0x1fffc]);
+				uint16_t const usual = get_u16le(&rom[0x1dffc]);  // $FFFC is in block 14 in the usual order
+				if (!usable(eprom) && usable(usual))
+				{
+					for (uint32_t b = 0; b < len; b += 0x4000)
+						std::swap_ranges(&rom[b], &rom[b + 0x2000], &rom[b + 0x2000]);
+					osd_printf_info("Activision image in the usual .a78 block order (reset $%04X): read in EPROM order\n", usual);
+				}
+			}
+
 			if (m_type == A78_TYPE6 || m_type == A78_TYPE8)
 				m_cart->ram_alloc(0x4000);
 			if (m_type == A78_MEGACART || (m_type >= A78_VERSABOARD && m_type <= A78_VERSA_POK450))
