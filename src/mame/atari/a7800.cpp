@@ -1526,6 +1526,16 @@ void a7800_state::machine_reset()
 		m_maincpu->set_state_int(M6502_S, 0x0116 + 3);
 		m_maincpu->set_state_int(M6502_X, 0x16);
 		m_maincpu->set_state_int(M6502_P, m_maincpu->state_int(M6502_P) | 0x08);
+
+		// and at the point in the frame where 7800OpenBIOS hands over (measured: frame 322, in
+		// vertical blank, on every cartridge), so that an input recording made under it lines
+		// up with -playback_offset 322. PAL: 1,653 cycles into the frame (line 14, pixel 256),
+		// to the cycle. NTSC: 971.69 cycles into frame 322; the CPU's clock is held as a whole
+		// 1,789,772 Hz, so its cycles drift against the frame and frame 0 can only get within a
+		// fraction of one: 972. The reset sequence's 7 cycles come out of the wait.
+		int const handover = m_ispal ? 1653 : 972;
+		attotime const frame = (machine().time() == attotime::zero) ? attotime::zero : m_screen->time_until_pos(0, 0);
+		m_maincpu->spin_until_time(frame + m_maincpu->cycles_to_attotime(handover - 7));
 	}
 }
 
