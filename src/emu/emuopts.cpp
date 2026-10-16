@@ -74,6 +74,8 @@ const options_entry emu_options::s_option_entries[] =
 	{ OPTION_PLAYBACK ";pb",                             nullptr,     core_options::option_type::STRING,     "playback an input file" },
 	{ OPTION_RECORD ";rec",                              nullptr,     core_options::option_type::STRING,     "record an input file" },
 	{ OPTION_EXIT_AFTER_PLAYBACK,                        "0",         core_options::option_type::BOOLEAN,    "close the program at the end of playback" },
+	{ OPTION_PLAYBACK_OFFSET,                            "0",         core_options::option_type::INTEGER,    "line up a playback with a game that starts on another frame: N > 0 drops the input file's first N frames, N < 0 waits N frames before playing it (implies -playback_force)" },
+	{ OPTION_PLAYBACK_FORCE,                             "0",         core_options::option_type::BOOLEAN,    "keep playing back when the input file's frame times do not match this run's, instead of stopping (\"Out of sync\")" },
 
 	{ OPTION_MNGWRITE,                                   nullptr,     core_options::option_type::PATH,       "optional filename to write a MNG movie of the current session" },
 	{ OPTION_AVIWRITE,                                   nullptr,     core_options::option_type::PATH,       "optional filename to write an AVI movie of the current session" },
