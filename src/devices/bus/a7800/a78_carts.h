@@ -33,6 +33,10 @@ static void a7800_cart(device_slot_interface &device)
 	device.option_add_internal("a78_p450_t6",  A78_ROM_P450_SG_RAM);
 	device.option_add_internal("a78_p450_ta",  A78_ROM_P450_SG9);
 	device.option_add_internal("a78_p450_vb",  A78_ROM_P450_VB);
+	device.option_add_internal("a78_p440_t0",  A78_ROM_P440_P450);
+	device.option_add_internal("a78_p440_t6",  A78_ROM_P440_P450_SG_RAM);
+	device.option_add_internal("a78_p440_ta",  A78_ROM_P440_P450_SG9);
+	device.option_add_internal("a78_p440_vb",  A78_ROM_P440_P450_VB);
 	// cart variants with a POKEY at 0x0800 (homebrew pcb)
 	device.option_add_internal("a78_p800_t0",  A78_ROM_P800);
 	device.option_add_internal("a78_p800_t1",  A78_ROM_P800_POKEY);
