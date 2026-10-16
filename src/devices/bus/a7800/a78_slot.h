@@ -35,6 +35,11 @@ enum
 	A78_TYPE6_POK450 = 0x24,
 	A78_TYPEA_POK450 = 0x25,
 	A78_VERSA_POK450 = 0x30,
+	// the same with a second POKEY at $0440 (header bit $0400; A78 v4 audio field 3)
+	A78_TYPE0_POK450_440 = 0x60,
+	A78_TYPE6_POK450_440 = 0x64,
+	A78_TYPEA_POK450_440 = 0x65,
+	A78_VERSA_POK450_440 = 0x70,
 
 	// carts with a POKEY at $0800 (homebrew pcb)
 	A78_TYPE0_POK800 = 0x80,

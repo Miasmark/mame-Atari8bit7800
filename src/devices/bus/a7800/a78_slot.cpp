@@ -262,9 +262,11 @@ int a78_cart_slot_device::validate_header(int head, bool log) const
 		head &= 0xff00;
 	}
 
-	// bankset ($2000), bank RAM ($4000) and POKEY at $0800 ($8000) are handled by a78_special_type;
-	// anything else above the Activision/Absolute bits is still unsupported
-	if ((head & 0xff00) > 0x300 && (head & 0xff00 & ~0xe000) != 0 && !(head & 0xe000))
+	// bankset ($2000), bank RAM ($4000) and POKEY at $0800 ($8000) are handled by a78_special_type,
+	// and a second POKEY at $0440 ($0400, beside $0450's $0040) by a78_dual_pokey; anything else
+	// above the Activision/Absolute bits is still unsupported
+	int const known = ((head & 0x0440) == 0x0440) ? (head & ~0x0400) : head;
+	if ((known & 0xff00) > 0x300 && (known & 0xff00 & ~0xe000) != 0 && !(known & 0xe000))
 	{
 		if (log)
 		{
@@ -289,6 +291,14 @@ struct a78_slot
 };
 
 #define A78_POKEY0450 0x20
+#define A78_POKEY0440 0x40  // added to a POKEY0450 type: a second POKEY at $0440
+
+// a second POKEY at $0440 beside the one at $0450: header bit $0400, with $0040
+static bool a78_dual_pokey(int mapper, int type)
+{
+	return (mapper & 0x0440) == 0x0440
+			&& (type == A78_TYPE0_POK450 || type == A78_TYPE6_POK450 || type == A78_TYPEA_POK450 || type == A78_VERSA_POK450);
+}
 
 // Here, we take the feature attribute from .xml (i.e. the PCB name) and we assign a unique ID to it
 static const a78_slot slot_list[] =
@@ -312,6 +322,10 @@ static const a78_slot slot_list[] =
 	{ A78_TYPE6_POK450, "a78_p450_t6" },
 	{ A78_TYPEA_POK450, "a78_p450_ta" },
 	{ A78_VERSA_POK450, "a78_p450_vb" },
+	{ A78_TYPE0_POK450_440, "a78_p440_t0" },
+	{ A78_TYPE6_POK450_440, "a78_p440_t6" },
+	{ A78_TYPEA_POK450_440, "a78_p440_ta" },
+	{ A78_VERSA_POK450_440, "a78_p440_vb" },
 	{ A78_TYPE0_POK800, "a78_p800_t0" },
 	{ A78_TYPE1_POK800, "a78_p800_t1" },
 	{ A78_TYPE2_POK800, "a78_p800_t2" },
@@ -459,6 +473,8 @@ std::pair<std::error_condition, std::string> a78_cart_slot_device::call_load()
 					m_type += A78_POKEY0450;
 				}
 			}
+			if (a78_dual_pokey(mapper, m_type))
+				m_type += A78_POKEY0440;
 
 			if (int const special = a78_special_type(mapper, len); special >= 0)
 				m_type = special;
@@ -518,7 +534,8 @@ std::pair<std::error_condition, std::string> a78_cart_slot_device::call_load()
 
 			if (m_type == A78_TYPE6 || m_type == A78_TYPE8)
 				m_cart->ram_alloc(0x4000);
-			if (m_type == A78_MEGACART || (m_type >= A78_VERSABOARD && m_type <= A78_VERSA_POK450))
+			if (m_type == A78_MEGACART || (m_type >= A78_VERSABOARD && m_type <= A78_VERSA_POK450)
+					|| (m_type >= A78_TYPE0_POK450_440 && m_type <= A78_VERSA_POK450_440))
 				m_cart->ram_alloc(0x8000);
 			// bankset bank RAM: 16K for the CPU at $4000 and 16K for MARIA
 			if (m_type == A78_BANKSET_SG_BANKRAM || m_type == A78_BANKSET_SG_BANKRAM_POK800 ||
@@ -619,6 +636,8 @@ std::string a78_cart_slot_device::get_default_card_software(get_default_card_sof
 				type += A78_POKEY0450;
 			}
 		}
+		if (a78_dual_pokey(mapper, type))
+			type += A78_POKEY0440;
 
 		if (int const special = a78_special_type(mapper, len); special >= 0)
 			type = special;

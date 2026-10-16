@@ -1449,6 +1449,10 @@ void a7800_state::machine_start()
 		case A78_TYPE6_POK450:
 		case A78_TYPEA_POK450:
 		case A78_VERSA_POK450:
+		case A78_TYPE0_POK450_440:
+		case A78_TYPE6_POK450_440:
+		case A78_TYPEA_POK450_440:
+		case A78_VERSA_POK450_440:
 			// POKEY and RAM regs at 0x400-0x47f
 			m_maincpu->space(AS_PROGRAM).install_readwrite_handler(0x0400, 0x047f, read8sm_delegate(*m_cart, FUNC(a78_cart_slot_device::read_04xx)), write8sm_delegate(*m_cart, FUNC(a78_cart_slot_device::write_04xx)));
 			m_maria->space(atari_maria_device::AS_DMA).install_read_handler(0x0400, 0x047f, read8sm_delegate(*m_cart, FUNC(a78_cart_slot_device::read_04xx)));
