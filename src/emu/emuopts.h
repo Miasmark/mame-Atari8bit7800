@@ -62,6 +62,8 @@
 #define OPTION_PLAYBACK             "playback"
 #define OPTION_RECORD               "record"
 #define OPTION_EXIT_AFTER_PLAYBACK  "exit_after_playback"
+#define OPTION_PLAYBACK_OFFSET      "playback_offset"
+#define OPTION_PLAYBACK_FORCE       "playback_force"
 #define OPTION_MNGWRITE             "mngwrite"
 #define OPTION_AVIWRITE             "aviwrite"
 #define OPTION_WAVWRITE             "wavwrite"
@@ -348,6 +350,8 @@ public:
 	const char *playback() const { return value(OPTION_PLAYBACK); }
 	const char *record() const { return value(OPTION_RECORD); }
 	bool exit_after_playback() const { return bool_value(OPTION_EXIT_AFTER_PLAYBACK); }
+	int playback_offset() const { return int_value(OPTION_PLAYBACK_OFFSET); }
+	bool playback_force() const { return bool_value(OPTION_PLAYBACK_FORCE); }
 	const char *mng_write() const { return value(OPTION_MNGWRITE); }
 	const char *avi_write() const { return value(OPTION_AVIWRITE); }
 	const char *wav_write() const { return value(OPTION_WAVWRITE); }
