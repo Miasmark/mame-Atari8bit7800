@@ -59,6 +59,7 @@ enum
 	A26_BF,
 	A26_SB,
 	A26_UASW,
+	A26_0840,
 };
 
 //-------------------------------------------------
@@ -191,6 +192,7 @@ static const vcs_slot slot_list[] =
 	{ A26_BF, "a26_bf" },
 	{ A26_SB, "a26_sb" },
 	{ A26_UASW, "a26_uasw" },
+	{ A26_0840, "a26_0840" },
 };
 
 static int vcs_get_pcb_id(const char *slot)
@@ -551,6 +553,12 @@ bool vcs_cart_slot_device::detect_modeSB(const uint8_t *cart, uint32_t len)
 	return sb >= 3 && sb > other;
 }
 
+bool vcs_cart_slot_device::detect_mode0840(const uint8_t *cart, uint32_t len)
+{
+	// both 0800 and 0840 are accessed (often one of them shows up in other 8K games)
+	return len == 0x2000 && count_abs_accesses(cart, len, 0x0800, 0x0800) && count_abs_accesses(cart, len, 0x0840, 0x0840);
+}
+
 bool vcs_cart_slot_device::detect_modeX07(const uint8_t *cart, uint32_t len)
 {
 	// banks are selected by accessing 0 1xxx nnnn 1101: look for 080d, 081d, ... 08fd in
@@ -862,6 +870,8 @@ int vcs_cart_slot_device::identify_cart_type(const uint8_t *ROM, uint32_t len)
 		type = A26_JVP;
 	else if (detect_modeUA(ROM, len))
 		type = A26_UA;
+	else if (detect_mode0840(ROM, len))
+		type = A26_0840;
 	else if (detect_8K_mode3F(ROM, len))
 		type = A26_3F;
 	else if (detect_32K_mode3F(ROM, len))
