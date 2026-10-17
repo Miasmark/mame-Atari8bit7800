@@ -78,6 +78,7 @@ private:
 	static bool detect_super_chip(const uint8_t *cart, uint32_t len);
 	static bool detect_modeFA2(const uint8_t *cart, uint32_t len);
 	static bool has_arm_driver(const uint8_t *cart, uint32_t len);
+	static bool detect_harmony_arm(const uint8_t *cart, uint32_t len);
 	static int count_abs_accesses(const uint8_t *cart, uint32_t len, uint16_t first, uint16_t last);
 	static int count_abs_accesses_masked(const uint8_t *cart, uint32_t len, uint16_t mask, uint16_t first, uint16_t last);
 	static bool detect_32in1(const uint8_t *cart, uint32_t len);
