@@ -78,6 +78,7 @@ private:
 	static bool detect_8in1(const uint8_t *cart, uint32_t len);
 	static bool detect_modeX07(const uint8_t *cart, uint32_t len);
 	static bool detect_modeSB(const uint8_t *cart, uint32_t len);
+	static bool detect_mode0840(const uint8_t *cart, uint32_t len);
 
 	friend class device_vcs_cart_interface;
 };
