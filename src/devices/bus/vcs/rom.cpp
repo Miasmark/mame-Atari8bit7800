@@ -27,6 +27,7 @@ DEFINE_DEVICE_TYPE(A26_ROM_F6,    a26_rom_f6_device,    "vcs_f6",    "Atari VCS 
 DEFINE_DEVICE_TYPE(A26_ROM_F8,    a26_rom_f8_device,    "vcs_f8",    "Atari VCS 2600 ROM Carts w/F8 bankswitch")
 DEFINE_DEVICE_TYPE(A26_ROM_F8_SW, a26_rom_f8_sw_device, "vcs_f8_sw", "Atari VCS 2600 ROM Cart Snow White")
 DEFINE_DEVICE_TYPE(A26_ROM_FA,    a26_rom_fa_device,    "vcs_fa",    "Atari VCS 2600 ROM Carts w/FA bankswitch")
+DEFINE_DEVICE_TYPE(A26_ROM_FA2,   a26_rom_fa2_device,   "vcs_fa2",   "Atari VCS 2600 ROM Carts w/FA2 bankswitch")
 DEFINE_DEVICE_TYPE(A26_ROM_FE,    a26_rom_fe_device,    "vcs_fe",    "Atari VCS 2600 ROM Carts w/FE bankswitch")
 DEFINE_DEVICE_TYPE(A26_ROM_3E,    a26_rom_3e_device,    "vcs_3e",    "Atari VCS 2600 ROM Carts w/3E bankswitch")
 DEFINE_DEVICE_TYPE(A26_ROM_3F,    a26_rom_3f_device,    "vcs_3f",    "Atari VCS 2600 ROM Carts w/3F bankswitch")
@@ -221,6 +222,50 @@ void a26_rom_fa_device::install_memory_handlers(address_space *space)
 			[this] (offs_t address, u8 &, u8) { if (!machine().side_effects_disabled()) switch_bank(address - 0x1ff8, 0); });
 	space->install_read_handler(0x1100, 0x11ff, read8sm_delegate(*this, FUNC(a26_rom_fa_device::read_ram)));
 	space->install_write_handler(0x1000, 0x10ff, write8sm_delegate(*this, FUNC(a26_rom_fa_device::write_ram)));
+}
+
+
+
+/*-------------------------------------------------
+ "FA2 Bankswitch" Carts:
+ the CBS RAM Plus scheme extended to 6 or 7 4K banks
+ (selected by read/write access to 0x1ff5-0x1ffa or
+ 0x1ffb) by the Harmony cart, with the same 256 bytes
+ of RAM (read port 0x1100-0x11ff, write port
+ 0x1000-0x10ff).
+ Images come as 24K or 28K of banks, or with the
+ Harmony's 1K ARM driver in front of them (29K, or
+ 32K padded): the driver is skipped.
+ Accessing 0x1ff4 asks the Harmony to load or save
+ the RAM from/to its flash; bit 6 of the value read
+ there tells whether it is still busy. Saving is not
+ emulated: the operation always reads as done.
+
+ GAMES: Star Castle Arcade (homebrew)
+
+ -------------------------------------------------*/
+
+a26_rom_fa2_device::a26_rom_fa2_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+	: a26_rom_f6_device(mconfig, A26_ROM_FA2, tag, owner, clock)
+{
+}
+
+void a26_rom_fa2_device::install_memory_handlers(address_space *space)
+{
+	// skip the ARM driver of 29K and 32K images
+	uint32_t const driver = (get_rom_size() > 0x7000) ? 0x400 : 0;
+	uint8_t const banks = std::min<uint32_t>((get_rom_size() - driver) / 0x1000, 7);
+
+	m_bank->configure_entries(0, banks, get_rom_base() + driver, 0x1000);
+	space->install_read_bank(0x1000, 0x1fff, m_bank);
+	space->install_write_handler(0x1ff5, 0x1ff5 + banks - 1, write8sm_delegate(*this, FUNC(a26_rom_fa2_device::switch_bank)));
+	space->install_read_tap(0x1ff5, 0x1ff5 + banks - 1, "bank",
+			[this] (offs_t address, u8 &, u8) { if (!machine().side_effects_disabled()) switch_bank(address - 0x1ff5, 0); });
+	space->install_read_handler(0x1100, 0x11ff, read8sm_delegate(*this, FUNC(a26_rom_fa2_device::read_ram)));
+	space->install_write_handler(0x1000, 0x10ff, write8sm_delegate(*this, FUNC(a26_rom_fa2_device::write_ram)));
+	// flash load/save of the RAM: never busy
+	space->install_read_tap(0x1ff4, 0x1ff4, "flash",
+			[] (offs_t, u8 &data, u8) { data &= ~0x40; });
 }
 
 
