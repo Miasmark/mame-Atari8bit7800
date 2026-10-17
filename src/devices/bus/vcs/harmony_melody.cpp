@@ -203,15 +203,17 @@ constexpr u32 DPCP_PARAMETERS = 0x330;
 constexpr u32 DPCP_DISPLAY = 0xc00;
 constexpr u32 DPCP_FREQUENCY = 0x1c00;
 
-constexpr u32 FA2_RAM = 0x1400;
-constexpr u32 FA2_SAVE = 0x1500;
+constexpr u32 DPCP_RANDOM_RESET = 0x2b43'5044; // "DPC+"
+constexpr u32 DPCP_RANDOM_TAP = 0x10ad'ab1e;
 
+// CDF family: display data and the special streams
 constexpr u32 CDF_DISPLAY = 0x800;
 constexpr u8 CDF_COMM_STREAM = 0x20;
 constexpr u8 CDF_JUMP_STREAM = 0x21;
 
-constexpr u32 DPCP_RANDOM_RESET = 0x2b43'5044; // "DPC+"
-constexpr u32 DPCP_RANDOM_TAP = 0x10ad'ab1e;
+// FA2: the 6507's RAM and the save area in the ARM RAM
+constexpr u32 FA2_RAM = 0x1400;
+constexpr u32 FA2_SAVE = 0x1500;
 
 } // anonymous namespace
 
@@ -612,6 +614,9 @@ u8 a26_rom_harmony_device::read(offs_t offset)
 
 void a26_rom_harmony_device::write(offs_t offset, u8 data)
 {
+	if (machine().side_effects_disabled())
+		return;
+
 	m_ff_pending = false;
 
 	switch (m_format)
