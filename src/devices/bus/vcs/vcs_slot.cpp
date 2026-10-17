@@ -239,38 +239,11 @@ std::pair<std::error_condition, std::string> vcs_cart_slot_device::call_load()
 			else
 			{
 				// identify type based on size
-				switch (len)
+				m_type = default_type_for_size(len);
+				if (m_type < 0)
 				{
-					case 0x800:
-					case 0x1000:
-						m_type = A26_2K_4K;
-						break;
-					case 0x2000:
-						m_type = A26_F8;
-						break;
-					case 0x28ff:
-					case 0x2900:
-						m_type = A26_DPC;
-						break;
-					case 0x3000:
-						m_type = A26_FA;
-						break;
-					case 0x4000:
-						m_type = A26_F6;
-						break;
-					case 0x8000:
-						m_type = A26_F4;
-						break;
-					case 0x10000:
-						m_type = A26_32IN1;
-						break;
-					case 0x80000:
-						m_type = A26_3F;
-						break;
-					default:
-						m_type = A26_2K_4K;
-						printf("Unrecognized cart type!\n");
-						break;
+					logerror("No slot type in the software list and no default for a %u byte cartridge, assuming 2K/4K\n", len);
+					m_type = A26_2K_4K;
 				}
 			}
 
@@ -281,6 +254,8 @@ std::pair<std::error_condition, std::string> vcs_cart_slot_device::call_load()
 		{
 			fread(ROM, len);
 			m_type = identify_cart_type(ROM, len);
+			if (m_type < 0)
+				m_type = A26_2K_4K;
 
 			// check for Super Chip (128bytes of RAM)
 			if (len == 0x2000 || len == 0x4000 || len == 0x8000)
@@ -723,45 +698,44 @@ int vcs_cart_slot_device::identify_cart_type(const uint8_t *ROM, uint32_t len)
 	else if (detect_snowhite(ROM, len))
 		type = A26_F8SW;
 
-	// otherwise, choose based on size
+	// otherwise, choose based on size (-1 if the size is not a known one)
 	if (type == 0xff)
-	{
-		switch (len)
-		{
-			case 0x800:
-			case 0x1000:
-				type = A26_2K_4K;
-				break;
-			case 0x2000:
-				type = A26_F8;
-				break;
-			case 0x28ff:
-			case 0x2900:
-				type = A26_DPC;
-				break;
-			case 0x3000:
-				type = A26_FA;
-				break;
-			case 0x4000:
-				type = A26_F6;
-				break;
-			case 0x8000:
-				type = A26_F4;
-				break;
-			case 0x10000:
-				type = A26_32IN1;
-				break;
-			case 0x80000:
-				type = A26_3F;
-				break;
-			default:
-				type = A26_2K_4K;
-				printf("Unrecognized cart type!\n");
-				break;
-		}
-	}
+		type = default_type_for_size(len);
 
 	return type;
+}
+
+/*-------------------------------------------------
+ default_type_for_size - the usual board for a
+ cartridge of a given size, when nothing better is
+ known (-1 for sizes no board uses)
+ -------------------------------------------------*/
+
+int vcs_cart_slot_device::default_type_for_size(uint32_t len)
+{
+	switch (len)
+	{
+		case 0x800:
+		case 0x1000:
+			return A26_2K_4K;
+		case 0x2000:
+			return A26_F8;
+		case 0x28ff:
+		case 0x2900:
+			return A26_DPC;
+		case 0x3000:
+			return A26_FA;
+		case 0x4000:
+			return A26_F6;
+		case 0x8000:
+			return A26_F4;
+		case 0x10000:
+			return A26_32IN1;
+		case 0x80000:
+			return A26_3F;
+		default:
+			return -1;
+	}
 }
 
 /*-------------------------------------------------
@@ -779,6 +753,8 @@ std::string vcs_cart_slot_device::get_default_card_software(get_default_card_sof
 		read(*hook.image_file(), &rom[0], len); // FIXME: check error return or read returning short
 
 		int const type = identify_cart_type(&rom[0], len);
+		if (type < 0)
+			logerror("Unrecognized cartridge (%u bytes), assuming 2K/4K\n", uint32_t(len));
 		char const *const slot_string = vcs_get_slot(type);
 
 		return std::string(slot_string);
