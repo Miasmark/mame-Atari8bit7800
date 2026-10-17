@@ -564,7 +564,7 @@ void a7800_state::apply_mode()
 		m_visible_timer->adjust(attotime::never);
 		const int lines = m_ispal ? 312 : 262;
 		const rectangle visarea(26, 26 + 160 + 16 - 1, m_ispal ? 32 : 24, m_ispal ? (32 + 228 + 31 - 1) : (24 + 192 + 31 - 1));
-		m_screen->configure(228, lines, visarea, attotime(0, HZ_TO_ATTOSECONDS(m_clock / 4) * 228 * lines));
+		m_screen->configure(228, lines, visarea, HZ_TO_ATTOSECONDS(m_clock / 4) * 228 * lines);
 	}
 	else
 	{
@@ -572,7 +572,7 @@ void a7800_state::apply_mode()
 		m_maincpu->set_unscaled_clock(m_clock / 8);
 		m_riot->set_unscaled_clock(m_clock / 8);
 		if (m_7800_width)
-			m_screen->configure(m_7800_width, m_7800_height, m_7800_visarea, m_7800_period);
+			m_screen->configure(m_7800_width, m_7800_height, m_7800_visarea, m_7800_period.as_attoseconds());
 	}
 }
 
