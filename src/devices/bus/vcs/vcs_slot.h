@@ -53,6 +53,7 @@ private:
 	optional_address_space m_address_space;
 
 	static bool detect_snowhite(const uint8_t *cart, uint32_t len);
+	static bool detect_f8_bank1_start(const uint8_t *cart, uint32_t len);
 	static bool detect_modeDC(const uint8_t *cart, uint32_t len);
 	static bool detect_modeF6(const uint8_t *cart, uint32_t len);
 	static bool detect_mode3E(const uint8_t *cart, uint32_t len);
