@@ -412,6 +412,11 @@ void a26_rom_harmony_device::device_reset()
 			ram_w32(i, rom_r32(i));
 		for (u32 i = DPCP_DISPLAY; i < 0x2000; i += 4)
 			ram_w32(i, rom_r32(i + 0x6000));
+
+		// and starts with the random number generator reset and an empty parameter list:
+		// the older driver has them in its image here, newer ones 8 or 12 bytes lower
+		ram_w32(DPCP_RANDOM, DPCP_RANDOM_RESET);
+		ram_w8(DPCP_PARAMETER_INDEX, 3);
 		m_bank_offset = 0xc00 + 5 * 0x1000;
 		break;
 
