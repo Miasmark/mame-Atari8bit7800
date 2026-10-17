@@ -57,6 +57,7 @@ enum
 	A26_EF,
 	A26_DF,
 	A26_BF,
+	A26_SB,
 };
 
 //-------------------------------------------------
@@ -187,6 +188,7 @@ static const vcs_slot slot_list[] =
 	{ A26_EF, "a26_ef" },
 	{ A26_DF, "a26_df" },
 	{ A26_BF, "a26_bf" },
+	{ A26_SB, "a26_sb" },
 };
 
 static int vcs_get_pcb_id(const char *slot)
@@ -535,6 +537,18 @@ bool vcs_cart_slot_device::detect_8in1(const uint8_t *cart, uint32_t len)
 	return 1;
 }
 
+bool vcs_cart_slot_device::detect_modeSB(const uint8_t *cart, uint32_t len)
+{
+	// 128K or 256K, banks selected by accessing 0800-083f: compare with the DF/BF hotspots
+	if (len != 0x20000 && len != 0x40000)
+		return 0;
+
+	int const banks = len / 0x1000;
+	int const sb = count_abs_accesses_masked(cart, len, 0xffff, 0x0800, 0x0800 + banks - 1);
+	int const other = (len == 0x20000) ? count_abs_accesses(cart, len, 0x1fc0, 0x1fdf) : count_abs_accesses(cart, len, 0x1f80, 0x1fbf);
+	return sb >= 3 && sb > other;
+}
+
 bool vcs_cart_slot_device::detect_modeX07(const uint8_t *cart, uint32_t len)
 {
 	// banks are selected by accessing 0 1xxx nnnn 1101: look for 080d, 081d, ... 08fd in
@@ -820,6 +834,8 @@ int vcs_cart_slot_device::identify_cart_type(const uint8_t *ROM, uint32_t len)
 		type = A26_DC;
 	else if (detect_modeX07(ROM, len))
 		type = A26_X07;
+	else if (detect_modeSB(ROM, len))
+		type = A26_SB;
 	else if (detect_32in1(ROM, len))
 		type = A26_32IN1;
 	else if (detect_8in1(ROM, len))
