@@ -358,7 +358,23 @@ tia_video_device::tia_video_device(const machine_config &mconfig, device_type ty
 	, m_vsync_cb(*this)
 	, m_maincpu(*this, "^maincpu")
 	, m_tia(*this, finder_base::DUMMY_TAG)
+	, m_config(*this, "CONFIG")
 {
+}
+
+
+// Frame blending shows a sprite drawn on alternate frames (flicker) as a steady, dimmer one,
+// as on a TV; turned off, each frame is shown as drawn, as in a frame-by-frame look.
+static INPUT_PORTS_START( tia_video )
+	PORT_START("CONFIG")
+	PORT_CONFNAME( 0x01, 0x01, "Frame Blending" )
+	PORT_CONFSETTING(    0x00, DEF_STR( Off ) )
+	PORT_CONFSETTING(    0x01, DEF_STR( On ) )
+INPUT_PORTS_END
+
+ioport_constructor tia_video_device::device_input_ports() const
+{
+	return INPUT_PORTS_NAME( tia_video );
 }
 
 // device type definition
@@ -986,13 +1002,14 @@ void tia_video_device::update_bitmap(int next_x, int next_y)
 		}
 
 		if ( x2 == 160 && y % screen_height == (screen_height - 1) ) {
+			bool const blend = BIT(m_config->read(), 0);
 			for ( int t_y = 0; t_y < buffer.height(); t_y++ ) {
 				uint16_t* l0 = &helper[current_bitmap].pix(t_y);
 				uint16_t* l1 = &helper[1 - current_bitmap].pix(t_y);
 				uint32_t* l2 = &buffer.pix(t_y);
 				int t_x;
 				for( t_x = 0; t_x < buffer.width(); t_x++ ) {
-					if ( l0[t_x] != l1[t_x] ) {
+					if ( blend && l0[t_x] != l1[t_x] ) {
 						/* Combine both entries */
 						l2[t_x] = pen(( ( l0[t_x] + 1 ) << 7 ) | l1[t_x]);
 					} else {
