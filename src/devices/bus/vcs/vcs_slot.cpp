@@ -545,9 +545,24 @@ bool vcs_cart_slot_device::detect_modeFA2(const uint8_t *cart, uint32_t len)
 
 bool vcs_cart_slot_device::has_arm_driver(const uint8_t *cart, uint32_t len)
 {
-	// Harmony/Melody images start with the ARM driver, whose first word
-	// is an ARM "LDR PC, [PC, #n]" (a branch through the vector table)
-	return len >= 4 && cart[3] == 0xe5 && cart[2] == 0x9f && (cart[1] & 0xf0) == 0xf0;
+	// Harmony/Melody images start with the ARM driver, whose first word is the reset
+	// vector: an unconditional ARM instruction loading PC ("LDR PC, [PC, #n]" or
+	// "MOV PC, #n")
+	return len >= 4 && (cart[3] >> 4) == 0x0e && (cart[1] >> 4) == 0x0f && ((cart[3] == 0xe5 && cart[2] == 0x9f) || (cart[3] == 0xe3 && cart[2] == 0xa0));
+}
+
+bool vcs_cart_slot_device::detect_harmony_arm(const uint8_t *cart, uint32_t len)
+{
+	// DPC+, CDF and CDFJ games run their bankswitching and much more on the Harmony/Melody's
+	// ARM: the driver at the start of the image names the scheme
+	static const char dpcplus[] = { 'D', 'P', 'C', '+' };
+	static const char cdf[] = { 'C', 'D', 'F' };
+	if (len < 0x8000 || !has_arm_driver(cart, len))
+		return 0;
+
+	uint8_t const *const driver_end = cart + 0x1000;
+	return std::search(cart, driver_end, std::begin(dpcplus), std::end(dpcplus)) != driver_end
+			|| std::search(cart, driver_end, std::begin(cdf), std::end(cdf)) != driver_end;
 }
 
 int vcs_cart_slot_device::count_abs_accesses(const uint8_t *cart, uint32_t len, uint16_t first, uint16_t last)
@@ -908,6 +923,8 @@ int vcs_cart_slot_device::identify_cart_type(const uint8_t *ROM, uint32_t len)
 	// auto-detect bank mode
 	if (detect_ss_tape(ROM, len))
 		type = A26_SS;
+	else if (detect_harmony_arm(ROM, len))
+		type = A26_HARMONY;
 	else if (detect_modeDC(ROM, len))
 		type = A26_DC;
 	else if (detect_modeX07(ROM, len))
