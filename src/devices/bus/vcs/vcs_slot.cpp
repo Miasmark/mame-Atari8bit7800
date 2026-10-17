@@ -17,6 +17,8 @@
 #include "emu.h"
 #include "vcs_slot.h"
 
+#include <algorithm>
+
 //**************************************************************************
 //  GLOBAL VARIABLES
 //**************************************************************************
@@ -51,6 +53,7 @@ enum
 	A26_X07,
 	A26_HARMONY,
 	A26_F0,
+	A26_FA2,
 };
 
 //-------------------------------------------------
@@ -177,6 +180,7 @@ static const vcs_slot slot_list[] =
 	{ A26_X07, "a26_x07" },
 	{ A26_HARMONY, "a26_harmony" },
 	{ A26_F0, "a26_f0" },
+	{ A26_FA2, "a26_fa2" },
 };
 
 static int vcs_get_pcb_id(const char *slot)
@@ -217,6 +221,9 @@ std::pair<std::error_condition, std::string> vcs_cart_slot_device::call_load()
 			case 0x02900:
 			case 0x03000:
 			case 0x04000:
+			case 0x06000:
+			case 0x07000:
+			case 0x07400:
 			case 0x08000:
 			case 0x10000:
 			case 0x80000:
@@ -268,7 +275,7 @@ std::pair<std::error_condition, std::string> vcs_cart_slot_device::call_load()
 				}
 
 			// add CBS RAM+ (256bytes of RAM)
-			if (m_type == A26_FA)
+			if (m_type == A26_FA || m_type == A26_FA2)
 				m_cart->ram_alloc(0x100);
 			// add M Network RAM
 			else if (m_type == A26_E7)
@@ -443,6 +450,45 @@ bool vcs_cart_slot_device::detect_ss_tape(const uint8_t *cart, uint32_t len)
 			return 0;
 	}
 	return 1;
+}
+
+bool vcs_cart_slot_device::detect_modeFA2(const uint8_t *cart, uint32_t len)
+{
+	// 32K FA2 images are the Harmony's 1K ARM driver, 28K of banks and 3K of padding
+	if (len != 0x8000 || !has_arm_driver(cart, len))
+		return 0;
+
+	for (uint32_t i = 0x7401; i < len; i++)
+		if (cart[i] != cart[0x7400])
+			return 0;
+
+	return count_abs_accesses(cart, len, 0x1ff5, 0x1ffb) >= 2;
+}
+
+bool vcs_cart_slot_device::has_arm_driver(const uint8_t *cart, uint32_t len)
+{
+	// Harmony/Melody images start with the ARM driver, whose first word
+	// is an ARM "LDR PC, [PC, #n]" (a branch through the vector table)
+	return len >= 4 && cart[3] == 0xe5 && cart[2] == 0x9f && (cart[1] & 0xf0) == 0xf0;
+}
+
+int vcs_cart_slot_device::count_abs_accesses(const uint8_t *cart, uint32_t len, uint16_t first, uint16_t last)
+{
+	// opcodes of instructions with an absolute (or absolute indexed) address that are used to
+	// access bankswitching hotspots: LDA, LDX, LDY, STA, STX, STY, BIT, CMP, CPX, CPY, NOP
+	static const uint8_t opcodes[] = { 0xad, 0xbd, 0xb9, 0xae, 0xbe, 0xac, 0xbc, 0x8d, 0x9d, 0x99, 0x8e, 0x8c, 0x2c, 0xcd, 0xdd, 0xd9, 0xec, 0xcc, 0x0c };
+	int found = 0;
+
+	for (uint32_t i = 0; i + 2 < len; i++)
+	{
+		if (std::find(std::begin(opcodes), std::end(opcodes), cart[i]) != std::end(opcodes))
+		{
+			uint16_t const address = (cart[i + 1] | (cart[i + 2] << 8)) & 0x1fff;
+			if (address >= first && address <= last)
+				found++;
+		}
+	}
+	return found;
 }
 
 bool vcs_cart_slot_device::detect_modeFE(const uint8_t *cart, uint32_t len)
@@ -743,6 +789,8 @@ int vcs_cart_slot_device::identify_cart_type(const uint8_t *ROM, uint32_t len)
 		type = A26_3F;
 	else if (detect_modeE7(ROM, len))
 		type = A26_E7;
+	else if (detect_modeFA2(ROM, len))
+		type = A26_FA2;
 	else if (detect_snowhite(ROM, len))
 		type = A26_F8SW;
 	else if (detect_f8_bank1_start(ROM, len))
@@ -777,6 +825,10 @@ int vcs_cart_slot_device::default_type_for_size(uint32_t len)
 			return A26_FA;
 		case 0x4000:
 			return A26_F6;
+		case 0x6000:
+		case 0x7000:
+		case 0x7400:
+			return A26_FA2;
 		case 0x8000:
 			return A26_F4;
 		case 0x10000:
