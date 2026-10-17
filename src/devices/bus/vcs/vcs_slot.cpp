@@ -17,6 +17,9 @@
 #include "emu.h"
 #include "vcs_slot.h"
 
+#include <algorithm>
+#include <string_view>
+
 //**************************************************************************
 //  GLOBAL VARIABLES
 //**************************************************************************
@@ -685,6 +688,23 @@ bool vcs_cart_slot_device::detect_super_chip(const uint8_t *cart, uint32_t len)
 }
 
 
+// ARM based Harmony/Melody formats: the driver at the start of the image names the format
+bool vcs_cart_slot_device::detect_harmony(const uint8_t *cart, uint32_t len)
+{
+	auto const contains = [cart, len] (uint32_t end, std::string_view signature)
+	{
+		end = std::min(end, len);
+		return std::search(cart, cart + end, signature.begin(), signature.end()) != cart + end;
+	};
+
+	// DPC+: 3K driver, 24K of banks, 4K of display data and 1K of frequencies
+	if (len == 0x8000 && contains(0xc00, "DPC+"))
+		return true;
+
+	return false;
+}
+
+
 /*-------------------------------------------------
  identify_cart_type - code to detect cart type from
  fullpath
@@ -696,7 +716,9 @@ int vcs_cart_slot_device::identify_cart_type(const uint8_t *ROM, uint32_t len)
 	int type = 0xff;
 
 	// auto-detect bank mode
-	if (detect_modeDC(ROM, len))
+	if (detect_harmony(ROM, len))
+		type = A26_HARMONY;
+	else if (detect_modeDC(ROM, len))
 		type = A26_DC;
 	else if (detect_mode3E(ROM, len))
 		type = A26_3E;
