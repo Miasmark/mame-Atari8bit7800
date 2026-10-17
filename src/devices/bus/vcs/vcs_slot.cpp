@@ -220,6 +220,7 @@ std::pair<std::error_condition, std::string> vcs_cart_slot_device::call_load()
 			case 0x02900:
 			case 0x03000:
 			case 0x04000:
+			case 0x07000:
 			case 0x08000:
 			case 0x10000:
 			case 0x20000:
@@ -696,11 +697,17 @@ bool vcs_cart_slot_device::detect_harmony(const uint8_t *cart, uint32_t len)
 	auto const contains = [cart, len] (uint32_t end, std::string_view signature)
 	{
 		end = std::min(end, len);
-		return std::search(cart, cart + end, signature.begin(), signature.end()) != cart + end;
+		auto const same = [] (uint8_t a, char b) { return a == uint8_t(b); };
+		return std::search(cart, cart + end, signature.begin(), signature.end(), same) != cart + end;
 	};
 
 	// DPC+: 3K driver, 24K of banks, 4K of display data and 1K of frequencies
 	if (len == 0x8000 && contains(0xc00, "DPC+"))
+		return true;
+
+	// FA2: seven banks, alone or after the 1K driver
+	static const uint8_t fa2_banks[] = { 0x00, 0xf4, 0xff, 0xff, 0x00, 0x04, 0x00, 0x00, 0x00, 0x14, 0x00, 0x00 };
+	if (len == 0x7000 || (len == 0x8000 && contains(0x400, std::string_view(reinterpret_cast<const char *>(fa2_banks), sizeof(fa2_banks)))))
 		return true;
 
 	// CDFJ+: up to 512K
