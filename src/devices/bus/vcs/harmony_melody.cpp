@@ -141,19 +141,6 @@ the cartridge bus, so it can lag a fast timer: Mappy's driver sets the timer
 to 93 kHz, but its notes are written for 20 kHz like the other games', and
 the voices are always stepped at 20 kHz here.
 
-
-FA2
----
-
-FA2 (Star Castle Arcade) is CBS RAM Plus extended to seven 4K banks,
-selected with $1FF5-$1FFB, with 256 bytes of RAM written at $1000-$10FF and
-read at $1100-$11FF.  An access to $1FF4 makes the driver carry out the
-command in the last byte of that RAM (1 loads the RAM from the save area,
-2 saves it there) and set that byte to 0 when done (1 for an unknown
-command); the 6507 waits in its own RAM meanwhile.  The 28K image has no
-driver, the 32K one has the 1K driver in front.  The save area is not kept
-when the machine is turned off: the driver of the demo keeps it in RAM too.
-
 ***************************************************************************/
 
 
@@ -211,9 +198,6 @@ constexpr u32 CDF_DISPLAY = 0x800;
 constexpr u8 CDF_COMM_STREAM = 0x20;
 constexpr u8 CDF_JUMP_STREAM = 0x21;
 
-// FA2: the 6507's RAM and the save area in the ARM RAM
-constexpr u32 FA2_RAM = 0x1400;
-constexpr u32 FA2_SAVE = 0x1500;
 
 } // anonymous namespace
 
@@ -355,15 +339,7 @@ void a26_rom_harmony_device::install_memory_handlers(address_space *space)
 	space->install_read_handler(0x1000, 0x1fff, read8sm_delegate(*this, FUNC(a26_rom_harmony_device::read)));
 	space->install_write_handler(0x1000, 0x1fff, write8sm_delegate(*this, FUNC(a26_rom_harmony_device::write)));
 
-	static constexpr u8 fa2_banks[] = { 0x00, 0xf4, 0xff, 0xff, 0x00, 0x04, 0x00, 0x00, 0x00, 0x14, 0x00, 0x00 };
-
-	if (m_rom_size == 0x7000 || (m_rom_size == 0x8000 && find_string(0, 0x400, std::string_view(reinterpret_cast<const char *>(fa2_banks), sizeof(fa2_banks)))))
-	{
-		m_format = FORMAT_FA2;
-		m_flash_size = 0x8000;
-		m_arm_ram_size = 0x2000;
-	}
-	else if (m_rom_size >= 0x8000 && find_string(0, 0xc00, "DPC+"))
+	if (m_rom_size >= 0x8000 && find_string(0, 0xc00, "DPC+"))
 	{
 		m_format = FORMAT_DPCP;
 		m_flash_size = 0x8000;
@@ -402,7 +378,6 @@ void a26_rom_harmony_device::install_memory_handlers(address_space *space)
 		cdf_setup();
 
 	// the ARM sees the image as its flash, kept in 32 bit words
-	m_flash_size = std::min(m_flash_size, m_rom_size);
 	m_flash = std::make_unique<u32 []>(m_flash_size / 4);
 	for (u32 i = 0; i < m_flash_size; i += 4)
 		m_flash[i / 4] = rom_r32(i);
@@ -449,11 +424,6 @@ void a26_rom_harmony_device::device_reset()
 		m_bank_offset = m_cdf_banks[0];
 		break;
 
-	case FORMAT_FA2:
-		// bank 1 at power up, after the driver of the 32K image
-		m_bank_offset = ((m_rom_size == 0x8000) ? 0x400 : 0) + 0x1000;
-		break;
-
 	default:
 		m_bank_offset = 0;
 		break;
@@ -492,8 +462,7 @@ u32 a26_rom_harmony_device::rom_r32(u32 offset) const
 bool a26_rom_harmony_device::find_string(u32 start, u32 end, std::string_view string) const
 {
 	end = std::min(end, m_rom_size);
-	auto const same = [] (u8 a, char b) { return a == u8(b); };
-	return (start < end) && (std::search(&m_rom[start], &m_rom[end], string.begin(), string.end(), same) != &m_rom[end]);
+	return (start < end) && (std::search(&m_rom[start], &m_rom[end], string.begin(), string.end()) != &m_rom[end]);
 }
 
 // timer 1 is free for the game's ARM code: only the counter is emulated
@@ -609,8 +578,6 @@ u8 a26_rom_harmony_device::read(offs_t offset)
 	case FORMAT_CDFJ:
 	case FORMAT_CDFJP:
 		return cdf_read(offset);
-	case FORMAT_FA2:
-		return fa2_read(offset);
 	default:
 		return m_rom[offset & (m_rom_size - 1)];
 	}
@@ -632,9 +599,6 @@ void a26_rom_harmony_device::write(offs_t offset, u8 data)
 	case FORMAT_CDFJ:
 	case FORMAT_CDFJP:
 		cdf_write(offset, data);
-		break;
-	case FORMAT_FA2:
-		fa2_write(offset, data);
 		break;
 	default:
 		break;
@@ -910,58 +874,6 @@ u8 a26_rom_harmony_device::dpcp_amplitude()
 	for (int voice = 0; voice < 3; voice++)
 		sum += arm_r8(ram_r32(DPCP_WAVEFORM + voice * 4) + (m_arm->fiq_reg(8 + voice) >> 27));
 	return sum;
-}
-
-
-//-------------------------------------------------
-//  FA2
-//-------------------------------------------------
-
-u8 a26_rom_harmony_device::fa2_read(offs_t offset)
-{
-	if (offset < 0x100)
-		return 0; // write port
-	else if (offset < 0x200)
-		return ram_r8(FA2_RAM + (offset & 0xff));
-
-	if (!machine().side_effects_disabled())
-	{
-		if (offset == 0xff4)
-		{
-			fa2_command();
-			return 0;
-		}
-		else if (offset >= 0xff5 && offset <= 0xffb)
-			m_bank_offset = ((m_rom_size == 0x8000) ? 0x400 : 0) + (offset - 0xff5) * 0x1000;
-	}
-	return m_rom[m_bank_offset + offset];
-}
-
-void a26_rom_harmony_device::fa2_write(offs_t offset, u8 data)
-{
-	if (offset < 0x100)
-		ram_w8(FA2_RAM + offset, data);
-	else if (offset == 0xff4)
-		fa2_command();
-	else if (offset >= 0xff5 && offset <= 0xffb)
-		m_bank_offset = ((m_rom_size == 0x8000) ? 0x400 : 0) + (offset - 0xff5) * 0x1000;
-}
-
-void a26_rom_harmony_device::fa2_command()
-{
-	const u8 command = ram_r8(FA2_RAM + 0xff) & 0x0f;
-	if (command == 1 || command == 2)
-	{
-		const u32 from = (command == 1) ? FA2_SAVE : FA2_RAM;
-		const u32 to = (command == 1) ? FA2_RAM : FA2_SAVE;
-		for (u32 i = 0; i < 0x100; i += 4)
-			ram_w32(to + i, ram_r32(from + i));
-		ram_w8(FA2_RAM + 0xff, 0);
-	}
-	else
-	{
-		ram_w8(FA2_RAM + 0xff, 1);
-	}
 }
 
 

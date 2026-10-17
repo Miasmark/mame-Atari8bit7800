@@ -905,8 +905,7 @@ bool vcs_cart_slot_device::detect_harmony(const uint8_t *cart, uint32_t len)
 	auto const contains = [cart, len] (uint32_t end, std::string_view signature)
 	{
 		end = std::min(end, len);
-		auto const same = [] (uint8_t a, char b) { return a == uint8_t(b); };
-		return std::search(cart, cart + end, signature.begin(), signature.end(), same) != cart + end;
+		return std::search(cart, cart + end, signature.begin(), signature.end()) != cart + end;
 	};
 
 	// DPC+: 3K driver, 24K of banks, 4K of display data and 1K of frequencies
