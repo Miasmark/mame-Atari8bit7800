@@ -346,7 +346,11 @@ void a26_rom_harmony_device::device_start()
 
 void a26_rom_harmony_device::install_memory_handlers(address_space *space)
 {
-	m_maincpu = &downcast<cpu_device &>(space->device());
+	// the 6507 owning the space (the 2600), or a 2600 bus on a machine whose CPU is elsewhere
+	// (the 7800 in 2600 mode): then its "maincpu"
+	m_maincpu = dynamic_cast<cpu_device *>(&space->device());
+	if (!m_maincpu)
+		m_maincpu = machine().root_device().subdevice<cpu_device>("maincpu");
 
 	space->install_read_handler(0x1000, 0x1fff, read8sm_delegate(*this, FUNC(a26_rom_harmony_device::read)));
 	space->install_write_handler(0x1000, 0x1fff, write8sm_delegate(*this, FUNC(a26_rom_harmony_device::write)));
