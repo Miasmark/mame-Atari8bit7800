@@ -6274,6 +6274,8 @@ if BUSES["VCS_CTRL"] then
 		MAME_DIR .. "src/devices/bus/vcs_ctrl/trakball.h",
 		MAME_DIR .. "src/devices/bus/vcs_ctrl/wheel.cpp",
 		MAME_DIR .. "src/devices/bus/vcs_ctrl/wheel.h",
+		MAME_DIR .. "src/devices/bus/vcs_ctrl/xg1.cpp",
+		MAME_DIR .. "src/devices/bus/vcs_ctrl/xg1.h",
 	}
 end
 

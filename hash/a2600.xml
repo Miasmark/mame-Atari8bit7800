@@ -14069,7 +14069,7 @@ MOS Atari-made game NTSC ROMs had a CO16xxx number and PAL ROMs had CO17xxx numb
 		</part>
 	</software>
 
-	<software name="sentinel" supported="no"> <!-- XEGS light gun not yet emulated -->
+	<software name="sentinel" supported="no"> <!-- needs the XG-1 light gun (-joyport1 xg1), which has only been checked with test code -->
 		<description>Sentinel</description>
 		<year>1990</year>
 		<publisher>Atari</publisher>
@@ -14126,7 +14126,7 @@ MOS Atari-made game NTSC ROMs had a CO16xxx number and PAL ROMs had CO17xxx numb
 		</part>
 	</software>
 
-	<software name="shootarc" supported="no"> <!-- XEGS light gun not yet emulated -->
+	<software name="shootarc" supported="no"> <!-- needs the XG-1 light gun (-joyport1 xg1), which has only been checked with test code -->
 		<description>Shooting Arcade (prototype 19890919)</description>
 		<year>1989</year>
 		<publisher>Atari</publisher>
@@ -14141,7 +14141,7 @@ MOS Atari-made game NTSC ROMs had a CO16xxx number and PAL ROMs had CO17xxx numb
 		</part>
 	</software>
 
-	<software name="shootarce" cloneof="shootarc" supported="no"> <!-- XEGS light gun not yet emulated -->
+	<software name="shootarce" cloneof="shootarc" supported="no"> <!-- needs the XG-1 light gun (-joyport1 xg1), which has only been checked with test code -->
 		<description>Shooting Arcade (PAL) (prototype 19900116)</description>
 		<year>1990</year>
 		<publisher>Atari</publisher>

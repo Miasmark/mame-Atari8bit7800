@@ -92,14 +92,22 @@ public:
 	// locked to the screen device's hpos()/vpos())
 	using lightpen_time_delegate = device_delegate<attotime (int, int)>;
 
+	// device_delegate telling whether a light sensor aimed at a crosshair (0-255 across the
+	// visible picture) sees light right now; for video chips whose raster and picture the
+	// screen device doesn't follow (the 2600's TIA starts a frame on the game's VSYNC),
+	// light_detected() asks it instead of looking at the screen
+	using light_sense_delegate = device_delegate<bool (int, int)>;
+
 	// static configuration helpers
 	auto trigger_wr_callback() { return m_write_trigger.bind(); }
 	template <typename T> void set_screen_tag(T &&tag) { m_screen.set_tag(std::forward<T>(tag)); }
 	template <typename... T> void set_lightpen_time_callback(T &&... args) { m_lightpen_time_cb.set(std::forward<T>(args)...); }
+	template <typename... T> void set_light_sense_callback(T &&... args) { m_light_sense_cb.set(std::forward<T>(args)...); }
 
 	// for peripherals that need to know the beam position (e.g. light pens)
 	optional_device<screen_device> m_screen;
 	lightpen_time_delegate m_lightpen_time_cb;
+	light_sense_delegate m_light_sense_cb;
 
 	// computer interface
 
