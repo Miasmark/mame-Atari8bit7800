@@ -164,6 +164,7 @@ void mos6530_device_base::device_start()
 	save_item(NAME(m_timershift));
 	save_item(NAME(m_timerstate));
 	save_item(NAME(m_timeout));
+	save_item(NAME(m_prescale));
 }
 
 
@@ -190,6 +191,15 @@ void mos6530_device_base::device_reset()
 }
 
 
+// The CPU reads and writes on whole cycles of the clock the RIOT runs at, but a time held
+// in attoseconds can fall a hair short of the cycle, and as_ticks() would then round it
+// down to the one before: the count would run a cycle or two early.
+static int64_t nearest_tick(const attotime &time, uint32_t clock)
+{
+	return (time + attotime::from_ticks(1, 2 * clock)).as_ticks(clock);
+}
+
+
 //-------------------------------------------------
 //  device_clock_changed - keep the count: the ticks
 //  left at the old rate are left at the new one (the
@@ -200,7 +210,7 @@ void mos6530_device_base::device_clock_changed()
 {
 	if (m_timer && m_timer->enabled() && m_timer_clock && clock())
 	{
-		uint64_t const ticks = m_timer->remaining().as_ticks(m_timer_clock);
+		uint64_t const ticks = nearest_tick(m_timer->remaining(), m_timer_clock);
 		m_timer->adjust(attotime::from_ticks(ticks, clock()));
 	}
 	m_timer_clock = clock();
@@ -319,7 +329,7 @@ uint8_t mos6530_device_base::get_timer()
 {
 	// determine the number of ticks remaining
 	uint8_t shift = (m_timerstate == TIMER_COUNTING) ? m_timershift : 0;
-	int64_t remain = m_timer->remaining().as_ticks(clock());
+	int64_t remain = nearest_tick(m_timer->remaining(), clock());
 	uint8_t val = remain >> shift;
 
 	// timeout is at 255, so round it down
@@ -331,12 +341,24 @@ uint8_t mos6530_device_base::get_timer()
 //  timer_start - restart timer counter
 //-------------------------------------------------
 
-void mos6530_device_base::timer_start(uint8_t data)
+void mos6530_device_base::timer_start(uint8_t data, bool restart)
 {
+	attotime const curtime = machine().time();
+	int64_t const now = nearest_tick(curtime, clock());
+
+	// a write restarts the prescaler, which steps the count on the next cycle; a read that takes
+	// the timer back to counting leaves it running, and the count steps on its next tick
+	int64_t first = now + 1;
+	if (restart)
+		m_prescale = attotime::from_ticks(first, clock());
+	else
+	{
+		int64_t const period = int64_t(1) << m_timershift;
+		first += ((nearest_tick(m_prescale, clock()) - first) % period + period) % period;
+	}
+
 	m_timerstate = TIMER_COUNTING;
-	attotime curtime = machine().time();
-	int64_t target = curtime.as_ticks(clock()) + 1 + (data << m_timershift);
-	m_timer->adjust(attotime::from_ticks(target, clock()) - curtime);
+	m_timer->adjust(attotime::from_ticks(first + (int64_t(data) << m_timershift), clock()) - curtime);
 }
 
 
@@ -539,7 +561,7 @@ uint8_t mos6530_device_base::timer_r(bool ie)
 
 			// timer goes back to count mode
 			if (m_timerstate == TIMER_SPINNING)
-				timer_start(data);
+				timer_start(data, false);
 		}
 
 		m_ie_timer = ie;
@@ -589,7 +611,7 @@ void mos6530_device_base::timer_w(offs_t offset, uint8_t data, bool ie)
 	// A0-A1 contain the prescaler
 	static const uint8_t timershift[4] = { 0, 3, 6, 10 };
 	m_timershift = timershift[offset & 3];
-	timer_start(data);
+	timer_start(data, true);
 
 	m_irq_timer = false;
 	m_ie_timer = ie;

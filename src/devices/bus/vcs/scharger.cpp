@@ -251,8 +251,11 @@ void a26_rom_ss_device::setup_tape_loader()
 		0xd8,                       //       CLD
 		0xa2, 0xff,                 //       LDX #$FF
 		0x9a,                       //       TXS
-		0xa9, 0x01,                 //       LDA #$01       leave the RIOT timer running out, as after
-		0x8d, 0x94, 0x02,           //       STA $0294      a real load (some games first wait for it)
+		0xa9, 0x01,                 //       LDA #$01       leave the RIOT timer run out, as after a real
+		0x8d, 0x97, 0x02,           //       STA $0297      load (some games first wait for it), and at
+		                            //                      1024T: read again, it counts on at that
+		                            //                      rate (Rabbit Transit waits for INTIM to
+		                            //                      read 0 once a line, which 1T would skip)
 		// leave "CMP $FFF8 / JMP start" in RAM at $FA-$FF, as the ROM goes away
 		// when the control register is written
 		0xa9, 0xcd, 0x85, 0xfa,     //       LDA #$CD / STA $FA
