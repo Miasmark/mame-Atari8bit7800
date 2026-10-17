@@ -23,6 +23,8 @@ permissions:
 
 jobs:
   build-windows:
+    # MAME's own CI: this fork builds its releases with atari-release.yml
+    if: github.repository == 'mamedev/mame'
     strategy:
       matrix:
         compiler: [gcc-x64, clang-x64, clang-arm64]
