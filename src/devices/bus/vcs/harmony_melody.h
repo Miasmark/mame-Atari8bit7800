@@ -60,7 +60,8 @@ private:
 		FORMAT_DPCP,
 		FORMAT_CDF,     // CDF version 0/1
 		FORMAT_CDFJ,
-		FORMAT_CDFJP    // CDFJ+
+		FORMAT_CDFJP,   // CDFJ+
+		FORMAT_FA2
 	};
 
 	u8 read(offs_t offset);
@@ -92,6 +93,11 @@ private:
 	void dpcp_register_w(u8 reg, u8 data);
 	void dpcp_function(u8 function);
 	u8 dpcp_amplitude();
+
+	// FA2
+	u8 fa2_read(offs_t offset);
+	void fa2_write(offs_t offset, u8 data);
+	void fa2_command();
 
 	// CDF, CDFJ, CDFJ+
 	void cdf_setup();
