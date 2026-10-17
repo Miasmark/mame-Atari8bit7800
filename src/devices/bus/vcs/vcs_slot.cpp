@@ -58,6 +58,7 @@ enum
 	A26_DF,
 	A26_BF,
 	A26_SB,
+	A26_UASW,
 };
 
 //-------------------------------------------------
@@ -189,6 +190,7 @@ static const vcs_slot slot_list[] =
 	{ A26_DF, "a26_df" },
 	{ A26_BF, "a26_bf" },
 	{ A26_SB, "a26_sb" },
+	{ A26_UASW, "a26_uasw" },
 };
 
 static int vcs_get_pcb_id(const char *slot)
@@ -729,6 +731,10 @@ bool vcs_cart_slot_device::detect_modeUA(const uint8_t *cart, uint32_t len)
 				numfound = 1;
 			}
 		}
+
+		// or any accesses to both hotspots
+		if (count_abs_accesses(cart, len, 0x0220, 0x0220) && count_abs_accesses(cart, len, 0x0240, 0x0240))
+			numfound = 1;
 	}
 	if (numfound)
 		return 1;
