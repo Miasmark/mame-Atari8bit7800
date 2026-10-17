@@ -222,6 +222,8 @@ std::pair<std::error_condition, std::string> vcs_cart_slot_device::call_load()
 			case 0x04000:
 			case 0x08000:
 			case 0x10000:
+			case 0x20000:
+			case 0x40000:
 			case 0x80000:
 				break;
 
@@ -700,6 +702,18 @@ bool vcs_cart_slot_device::detect_harmony(const uint8_t *cart, uint32_t len)
 	// DPC+: 3K driver, 24K of banks, 4K of display data and 1K of frequencies
 	if (len == 0x8000 && contains(0xc00, "DPC+"))
 		return true;
+
+	// CDFJ+: up to 512K
+	if (len >= 0x8000 && contains(0x800, "PLUSCDFJ"))
+		return true;
+
+	// CDF and CDFJ: "CDF" and the version, three times, in the 2K driver
+	if (len == 0x8000)
+	{
+		for (uint32_t i = 0; i + 12 <= 0x800; i++)
+			if (!memcmp(&cart[i], "CDF", 3) && !memcmp(&cart[i], &cart[i + 4], 4) && !memcmp(&cart[i], &cart[i + 8], 4))
+				return true;
+	}
 
 	return false;
 }
