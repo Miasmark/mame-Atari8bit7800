@@ -326,4 +326,3 @@ void a78_bankset_rom_52k_p4000_device::write_40xx(offs_t offset, uint8_t data)
 	if (offset < 0x4000)
 		m_pokey4000->write(offset & 0x0f, data);
 }
-
