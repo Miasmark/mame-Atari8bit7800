@@ -281,9 +281,10 @@ std::pair<std::error_condition, std::string> vcs_cart_slot_device::call_load()
 		else
 		{
 			fread(ROM, len);
-			m_type = identify_cart_type(ROM, len);
-			if (m_type < 0)
-				m_type = A26_2K_4K;
+
+			// the board is the slot option picked by get_default_card_software(), unless
+			// one was given on the command line: allocate the RAM that one needs
+			m_type = vcs_get_pcb_id(m_cart->device().basetag());
 
 			// check for Super Chip (128bytes of RAM)
 			if (len == 0x2000 || len == 0x4000 || len == 0x8000 || m_type == A26_EF || m_type == A26_DF || m_type == A26_BF)
