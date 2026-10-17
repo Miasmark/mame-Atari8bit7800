@@ -708,9 +708,10 @@ u8 a26_rom_harmony_device::dpcp_register_r(u8 reg)
 
 	case 3:
 	{
-		// DFxFRACDATA: 12.8 pointer in bits 31-12
+		// DFxFRACDATA: 12.8 pointer in bits 31-12; the increment is a byte, and the rest of its
+		// word can be driver data (Stay Frosty 2 has the "DPC+" signature there for DF5 or DF6)
 		const u32 pointer = ram_r32(DPCP_FRACTIONAL + index * 4);
-		ram_w32(DPCP_FRACTIONAL + index * 4, pointer + (ram_r32(DPCP_INCREMENT + index * 4) << 12));
+		ram_w32(DPCP_FRACTIONAL + index * 4, pointer + (ram_r8(DPCP_INCREMENT + index * 4) << 12));
 		return ram_r8(DPCP_DISPLAY + (pointer >> 20));
 	}
 	}
