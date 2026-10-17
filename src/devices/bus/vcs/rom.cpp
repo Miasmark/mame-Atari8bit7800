@@ -26,6 +26,9 @@ DEFINE_DEVICE_TYPE(A26_ROM_F4,    a26_rom_f4_device,    "vcs_f4",    "Atari VCS 
 DEFINE_DEVICE_TYPE(A26_ROM_F6,    a26_rom_f6_device,    "vcs_f6",    "Atari VCS 2600 ROM Carts w/F6 bankswitch")
 DEFINE_DEVICE_TYPE(A26_ROM_F8,    a26_rom_f8_device,    "vcs_f8",    "Atari VCS 2600 ROM Carts w/F8 bankswitch")
 DEFINE_DEVICE_TYPE(A26_ROM_F8_SW, a26_rom_f8_sw_device, "vcs_f8_sw", "Atari VCS 2600 ROM Cart Snow White")
+DEFINE_DEVICE_TYPE(A26_ROM_EF,    a26_rom_ef_device,    "vcs_ef",    "Atari VCS 2600 ROM Carts w/EF bankswitch")
+DEFINE_DEVICE_TYPE(A26_ROM_DF,    a26_rom_df_device,    "vcs_df",    "Atari VCS 2600 ROM Carts w/DF bankswitch")
+DEFINE_DEVICE_TYPE(A26_ROM_BF,    a26_rom_bf_device,    "vcs_bf",    "Atari VCS 2600 ROM Carts w/BF bankswitch")
 DEFINE_DEVICE_TYPE(A26_ROM_FA,    a26_rom_fa_device,    "vcs_fa",    "Atari VCS 2600 ROM Carts w/FA bankswitch")
 DEFINE_DEVICE_TYPE(A26_ROM_FA2,   a26_rom_fa2_device,   "vcs_fa2",   "Atari VCS 2600 ROM Carts w/FA2 bankswitch")
 DEFINE_DEVICE_TYPE(A26_ROM_FE,    a26_rom_fe_device,    "vcs_fe",    "Atari VCS 2600 ROM Carts w/FE bankswitch")
@@ -194,6 +197,73 @@ a26_rom_f8_sw_device::a26_rom_f8_sw_device(const machine_config &mconfig, const 
 	: a26_rom_f8_device(mconfig, A26_ROM_F8_SW, tag, owner, clock)
 {
 }
+
+
+/*-------------------------------------------------
+ "EF", "DF" and "BF Bankswitch" Carts:
+ the F8/F6/F4 scheme extended to more 4K banks, with
+ the hotspots further down:
+ EF: 16 banks (64K), read/write access to 0x1fe0-0x1fef
+ DF: 32 banks (128K), read/write access to 0x1fc0-0x1fdf
+ BF: 64 banks (256K), read/write access to 0x1f80-0x1fbf
+ The "SC" versions (EFSC, DFSC, BFSC) add the 128
+ bytes of Super Chip RAM, like F8SC etc.
+ Which bank the boards come up in is not documented:
+ we use the ones the homebrew using these boards is
+ known to start from.
+
+ GAMES: Homestar Runner RPG (EF), and other homebrew
+
+ -------------------------------------------------*/
+
+a26_rom_ef_device::a26_rom_ef_device(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, uint32_t clock, offs_t hotspot, uint8_t banks, uint8_t start_bank, uint8_t start_bank_sc)
+	: a26_rom_f6_device(mconfig, type, tag, owner, clock)
+	, m_hotspot(hotspot)
+	, m_banks(banks)
+	, m_start_bank(start_bank)
+	, m_start_bank_sc(start_bank_sc)
+	, m_rom_banks(1)
+{
+}
+
+a26_rom_ef_device::a26_rom_ef_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+	: a26_rom_ef_device(mconfig, A26_ROM_EF, tag, owner, clock, 0x1fe0, 16, 1, 15)
+{
+}
+
+a26_rom_df_device::a26_rom_df_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+	: a26_rom_ef_device(mconfig, A26_ROM_DF, tag, owner, clock, 0x1fc0, 32, 15, 15)
+{
+}
+
+a26_rom_bf_device::a26_rom_bf_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+	: a26_rom_ef_device(mconfig, A26_ROM_BF, tag, owner, clock, 0x1f80, 64, 1, 15)
+{
+}
+
+uint8_t a26_rom_ef_device::get_start_bank()
+{
+	return (is_ram_present(0x80) ? m_start_bank_sc : m_start_bank) % m_rom_banks;
+}
+
+void a26_rom_ef_device::install_memory_handlers(address_space *space)
+{
+	// smaller images just repeat
+	m_rom_banks = std::clamp<uint32_t>(get_rom_size() / 0x1000, 1, m_banks);
+
+	m_bank->configure_entries(0, m_rom_banks, get_rom_base(), 0x1000);
+	space->install_read_bank(0x1000, 0x1fff, m_bank);
+	space->install_write_handler(m_hotspot, m_hotspot + m_banks - 1, write8sm_delegate(*this, FUNC(a26_rom_ef_device::switch_bank)));
+	install_super_chip_handlers(space);
+	space->install_read_tap(m_hotspot, m_hotspot + m_banks - 1, "bank",
+			[this] (offs_t address, u8 &, u8) { if (!machine().side_effects_disabled()) switch_bank(address - m_hotspot, 0); });
+}
+
+void a26_rom_ef_device::switch_bank(offs_t offset, uint8_t data)
+{
+	m_bank->set_entry(offset % m_rom_banks);
+}
+
 
 
 /*-------------------------------------------------

@@ -54,6 +54,9 @@ enum
 	A26_HARMONY,
 	A26_F0,
 	A26_FA2,
+	A26_EF,
+	A26_DF,
+	A26_BF,
 };
 
 //-------------------------------------------------
@@ -181,6 +184,9 @@ static const vcs_slot slot_list[] =
 	{ A26_HARMONY, "a26_harmony" },
 	{ A26_F0, "a26_f0" },
 	{ A26_FA2, "a26_fa2" },
+	{ A26_EF, "a26_ef" },
+	{ A26_DF, "a26_df" },
+	{ A26_BF, "a26_bf" },
 };
 
 static int vcs_get_pcb_id(const char *slot)
@@ -226,6 +232,8 @@ std::pair<std::error_condition, std::string> vcs_cart_slot_device::call_load()
 			case 0x07400:
 			case 0x08000:
 			case 0x10000:
+			case 0x20000:
+			case 0x40000:
 			case 0x80000:
 				break;
 
@@ -268,7 +276,7 @@ std::pair<std::error_condition, std::string> vcs_cart_slot_device::call_load()
 				m_type = A26_2K_4K;
 
 			// check for Super Chip (128bytes of RAM)
-			if (len == 0x2000 || len == 0x4000 || len == 0x8000)
+			if (len == 0x2000 || len == 0x4000 || len == 0x8000 || m_type == A26_EF || m_type == A26_DF || m_type == A26_BF)
 				if (detect_super_chip(ROM, len))
 				{
 					m_cart->ram_alloc(0x80);
@@ -474,6 +482,12 @@ bool vcs_cart_slot_device::has_arm_driver(const uint8_t *cart, uint32_t len)
 
 int vcs_cart_slot_device::count_abs_accesses(const uint8_t *cart, uint32_t len, uint16_t first, uint16_t last)
 {
+	return count_abs_accesses_masked(cart, len, 0x1fff, first, last);
+}
+
+// the address in the instruction is ANDed with mask (without folding mirrors first)
+int vcs_cart_slot_device::count_abs_accesses_masked(const uint8_t *cart, uint32_t len, uint16_t mask, uint16_t first, uint16_t last)
+{
 	// opcodes of instructions with an absolute (or absolute indexed) address that are used to
 	// access bankswitching hotspots: LDA, LDX, LDY, STA, STX, STY, BIT, CMP, CPX, CPY, NOP
 	static const uint8_t opcodes[] = { 0xad, 0xbd, 0xb9, 0xae, 0xbe, 0xac, 0xbc, 0x8d, 0x9d, 0x99, 0x8e, 0x8c, 0x2c, 0xcd, 0xdd, 0xd9, 0xec, 0xcc, 0x0c };
@@ -483,12 +497,49 @@ int vcs_cart_slot_device::count_abs_accesses(const uint8_t *cart, uint32_t len, 
 	{
 		if (std::find(std::begin(opcodes), std::end(opcodes), cart[i]) != std::end(opcodes))
 		{
-			uint16_t const address = (cart[i + 1] | (cart[i + 2] << 8)) & 0x1fff;
+			uint16_t const address = (cart[i + 1] | (cart[i + 2] << 8)) & mask;
 			if (address >= first && address <= last)
 				found++;
 		}
 	}
 	return found;
+}
+
+bool vcs_cart_slot_device::detect_32in1(const uint8_t *cart, uint32_t len)
+{
+	// 32 2K games: (nearly) every 2K block has a reset vector pointing to its own startup code
+	static const uint8_t first_opcodes[] = { 0x78, 0xd8, 0xa2, 0xa0, 0xa9, 0x4c, 0x20, 0x85, 0xa5 };
+	if (len != 0x10000)
+		return 0;
+
+	int games = 0;
+	for (uint32_t block = 0; block < len; block += 0x800)
+	{
+		uint16_t const reset = (cart[block + 0x7fd] << 8) | cart[block + 0x7fc];
+		uint8_t const opcode = cart[block + (reset & 0x7ff)];
+		if ((reset & 0x1000) && std::find(std::begin(first_opcodes), std::end(first_opcodes), opcode) != std::end(first_opcodes))
+			games++;
+	}
+	return games >= 30;
+}
+
+bool vcs_cart_slot_device::detect_8in1(const uint8_t *cart, uint32_t len)
+{
+	// 8 8K games with F8 bankswitching: every 8K accesses the F8 hotspots
+	if (len != 0x10000 || count_abs_accesses(cart, len, 0x1fe0, 0x1fef) > count_abs_accesses(cart, len, 0x1ff8, 0x1ff9))
+		return 0;
+
+	for (uint32_t game = 0; game < len; game += 0x2000)
+		if (!count_abs_accesses(&cart[game], 0x2000, 0x1ff8, 0x1ff9))
+			return 0;
+	return 1;
+}
+
+bool vcs_cart_slot_device::detect_modeX07(const uint8_t *cart, uint32_t len)
+{
+	// banks are selected by accessing 0 1xxx nnnn 1101: look for 080d, 081d, ... 08fd in
+	// the code (graphics data and other bankswitching code rarely have more than a few)
+	return len == 0x10000 && count_abs_accesses_masked(cart, len, 0xff0f, 0x080d, 0x080d) >= 6;
 }
 
 bool vcs_cart_slot_device::detect_modeFE(const uint8_t *cart, uint32_t len)
@@ -757,7 +808,7 @@ bool vcs_cart_slot_device::detect_super_chip(const uint8_t *cart, uint32_t len)
  fullpath
  -------------------------------------------------*/
 
-// 4in1 & 8in1 are not currently detected from fullpath...
+// 4in1 is not currently detected from fullpath...
 int vcs_cart_slot_device::identify_cart_type(const uint8_t *ROM, uint32_t len)
 {
 	int type = 0xff;
@@ -767,6 +818,12 @@ int vcs_cart_slot_device::identify_cart_type(const uint8_t *ROM, uint32_t len)
 		type = A26_SS;
 	else if (detect_modeDC(ROM, len))
 		type = A26_DC;
+	else if (detect_modeX07(ROM, len))
+		type = A26_X07;
+	else if (detect_32in1(ROM, len))
+		type = A26_32IN1;
+	else if (detect_8in1(ROM, len))
+		type = A26_8IN1;
 	else if (detect_mode3E(ROM, len))
 		type = A26_3E;
 	else if (detect_modeFE(ROM, len))
@@ -832,7 +889,11 @@ int vcs_cart_slot_device::default_type_for_size(uint32_t len)
 		case 0x8000:
 			return A26_F4;
 		case 0x10000:
-			return A26_32IN1;
+			return A26_EF;
+		case 0x20000:
+			return A26_DF;
+		case 0x40000:
+			return A26_BF;
 		case 0x80000:
 			return A26_3F;
 		default:
