@@ -35,8 +35,9 @@ change is its own commit with a description of what was measured.
 - **Harmony/Melody ARM cartridges: DPC+, CDF, CDFJ and CDFJ+.**
   - **How:** the game's own ARM code runs on MAME's ARM7; the Harmony driver's behaviour is
     implemented natively.
-  - **Tested:** 25 Champ Games/SpiceWare demos and Space Rocks boot and play. Their attract screens
-    match Stella's, apart from MAME's TIA frame blending.
+  - **Tested:** 25 Champ Games/SpiceWare demos, Space Rocks, Stay Frosty 2 (demo and later build),
+    Draconian and Frantic boot and play. Their attract screens match Stella's, apart from MAME's TIA
+    frame blending.
 - **New bank-switching boards:**
   - FA2 (Star Castle Arcade);
   - EF/DF/BF and their Super Chip versions;
@@ -65,6 +66,9 @@ change is its own commit with a description of what was measured.
   breakpoints and stepping.
 - **`-playback_offset N` / `-playback_force`**: play an `.inp` file on a game that starts on another
   frame.
+- **The 6532 RIOT timer is cycle-exact.** It ran one or two cycles early, which broke games that
+  poll INTIM for 0 once a line (Stay Frosty 2). A read after the timer runs out now resumes counting
+  on the prescaler's own phase. Checked against Stella read by read.
 - **The 6532 RIOT keeps its timer count when its clock changes.**
 
 ## Not in this branch
