@@ -45,6 +45,7 @@ public:
 
 	int get_cart_type() { return m_type; }
 	static int identify_cart_type(const uint8_t *ROM, uint32_t len);
+	static int default_type_for_size(uint32_t len);
 
 protected:
 	// device_t implementation
@@ -58,10 +59,19 @@ private:
 	const char *m_image_brief = nullptr;
 
 	static bool detect_snowhite(const uint8_t *cart, uint32_t len);
+	static bool detect_f8_bank1_start(const uint8_t *cart, uint32_t len);
 	static bool detect_modeDC(const uint8_t *cart, uint32_t len);
 	static bool detect_modeF6(const uint8_t *cart, uint32_t len);
 	static bool detect_mode3E(const uint8_t *cart, uint32_t len);
 	static bool detect_modeSS(const uint8_t *cart, uint32_t len);
+	static bool is_ss_tape_size(uint32_t len);
+	static bool is_usual_size(uint32_t len);
+	static bool is_any_banks_size(uint32_t len);
+	static int count_zp_stores(const uint8_t *cart, uint32_t len, uint8_t address);
+	static bool detect_mode3EP(const uint8_t *cart, uint32_t len);
+	static bool detect_any_3E(const uint8_t *cart, uint32_t len);
+	static bool detect_any_3F(const uint8_t *cart, uint32_t len);
+	static bool detect_ss_tape(const uint8_t *cart, uint32_t len);
 	static bool detect_modeFE(const uint8_t *cart, uint32_t len);
 	static bool detect_modeE0(const uint8_t *cart, uint32_t len);
 	static bool detect_modeCV(const uint8_t *cart, uint32_t len);
@@ -73,6 +83,15 @@ private:
 	static bool detect_32K_mode3F(const uint8_t *cart, uint32_t len);
 	static bool detect_super_chip(const uint8_t *cart, uint32_t len);
 	static bool detect_harmony(const uint8_t *cart, uint32_t len);
+	static bool detect_modeFA2(const uint8_t *cart, uint32_t len);
+	static bool has_arm_driver(const uint8_t *cart, uint32_t len);
+	static int count_abs_accesses(const uint8_t *cart, uint32_t len, uint16_t first, uint16_t last);
+	static int count_abs_accesses_masked(const uint8_t *cart, uint32_t len, uint16_t mask, uint16_t first, uint16_t last);
+	static bool detect_32in1(const uint8_t *cart, uint32_t len);
+	static bool detect_8in1(const uint8_t *cart, uint32_t len);
+	static bool detect_modeX07(const uint8_t *cart, uint32_t len);
+	static bool detect_modeSB(const uint8_t *cart, uint32_t len);
+	static bool detect_mode0840(const uint8_t *cart, uint32_t len);
 
 	friend class device_vcs_cart_interface;
 };

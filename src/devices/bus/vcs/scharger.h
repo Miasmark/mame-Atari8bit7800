@@ -27,6 +27,16 @@ public:
 private:
 	static constexpr uint32_t RAM_WRITE_TIME = 5;
 
+	// tape images: 8K of data and a 256 byte header for each load
+	static constexpr uint32_t TAPE_LOAD_SIZE = 0x2100;
+	// offsets in the loader that stands in for the BIOS ROM
+	static constexpr offs_t LOADER_START_LO = 0x024;
+	static constexpr offs_t LOADER_START_HI = 0x028;
+	static constexpr offs_t LOADER_CONTROL_RAM = 0x02c;
+	static constexpr offs_t LOADER_CONTROL = 0x030;
+	static constexpr offs_t LOADER_LOAD_REQUESTED = 0x7f0;
+	static constexpr offs_t LOADER_LOAD_FIRST = 0x7f1;
+
 	virtual void device_start() override ATTR_COLD;
 	virtual void device_reset() override ATTR_COLD;
 
@@ -44,6 +54,14 @@ private:
 	bool m_rom_enabled;
 	uint16_t m_last_address_bus;
 	uint32_t m_address_bus_changes;
+
+	void setup_tape_loader();
+	void tape_load(bool first);
+
+	address_space *m_space;
+	uint32_t m_tape_loads;
+	uint8_t m_loader[0x800];
+	uint32_t m_current_load;
 };
 
 
