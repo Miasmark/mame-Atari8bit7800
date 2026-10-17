@@ -540,7 +540,7 @@ bool vcs_cart_slot_device::detect_modeE7(const uint8_t *cart, uint32_t len)
 									{ 0x8d, 0xe7, 0xff }
 	};
 
-	if (len == 0x2000 || len == 0x4000)
+	if (len == 0x2000 || len == 0x3000 || len == 0x4000)
 	{
 		for (int i = 0; i < len - sizeof signatures[0]; i++)
 		{
