@@ -356,6 +356,27 @@ bool vcs_cart_slot_device::detect_snowhite(const uint8_t *cart, uint32_t len)
 	return 0;
 }
 
+bool vcs_cart_slot_device::detect_f8_bank1_start(const uint8_t *cart, uint32_t len)
+{
+	// MAME's F8 board starts in bank 0, which suits nearly every game, but on a few
+	// (Congo Bongo) the reset vector of bank 0 points into game code that first reads
+	// zero page RAM: this only works if the board comes up in bank 1, which those
+	// games have an init routine for
+	if (len != 0x2000)
+		return 0;
+
+	auto reads_ram_first = [cart] (uint32_t bank)
+	{
+		uint16_t const reset = (cart[bank + 0xffd] << 8) | cart[bank + 0xffc];
+		uint8_t const *const code = &cart[bank + (reset & 0x0fff)];
+		// LDA/LDX/LDY/ORA/AND/EOR/CMP zp with a RIOT RAM address
+		bool const zp_read = code[0] == 0xa5 || code[0] == 0xa6 || code[0] == 0xa4 || code[0] == 0x05 || code[0] == 0x25 || code[0] == 0x45 || code[0] == 0xc5;
+		return (reset & 0x1000) && ((reset & 0x0fff) < 0x0ffe) && zp_read && code[1] >= 0x80;
+	};
+
+	return reads_ram_first(0) && !reads_ram_first(0x1000);
+}
+
 bool vcs_cart_slot_device::detect_mode3E(const uint8_t *cart, uint32_t len)
 {
 	// this one is a little hacky... looks for STY $3e, which is unique to
@@ -696,6 +717,8 @@ int vcs_cart_slot_device::identify_cart_type(const uint8_t *ROM, uint32_t len)
 	else if (detect_modeE7(ROM, len))
 		type = A26_E7;
 	else if (detect_snowhite(ROM, len))
+		type = A26_F8SW;
+	else if (detect_f8_bank1_start(ROM, len))
 		type = A26_F8SW;
 
 	// otherwise, choose based on size (-1 if the size is not a known one)
