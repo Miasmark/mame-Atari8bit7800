@@ -473,8 +473,14 @@ void a26_rom_e0_device::switch_bank(offs_t offset, uint8_t data)
  four different chunks forming the other 1K of RAM
  (the bank is selected by accessing 0x1fe8-0x1feb)
 
+ There are also 8K and 12K variants (4 or 6 2K
+ banks, the last one fixed at 1800-1fff): the
+ hotspots below 0x1fe7 count down from 0x1fe6 to
+ the first bank, i.e. on an 8K board 0x1fe4-0x1fe6
+ select banks 0-2 (sometimes called "E78K").
+
  GAMES: M Network 16K games like Burgertime and
- Bump'n Jump
+ Bump'n Jump, 8K Bump'n Jump
 
  -------------------------------------------------*/
 
@@ -484,6 +490,7 @@ a26_rom_e7_device::a26_rom_e7_device(const machine_config &mconfig, const char *
 	, m_lo_ram_bank(*this, "low_ram")
 	, m_hi_ram_bank(*this, "high_ram")
 	, m_view(*this, "view")
+	, m_banks(8)
 {
 }
 
@@ -495,7 +502,8 @@ void a26_rom_e7_device::device_reset()
 
 void a26_rom_e7_device::install_memory_handlers(address_space *space)
 {
-	m_rom_bank->configure_entries(0, 8, get_rom_base(), 0x800);
+	m_banks = std::min<uint32_t>(get_rom_size() / 0x800, 8);
+	m_rom_bank->configure_entries(0, m_banks, get_rom_base(), 0x800);
 	m_lo_ram_bank->configure_entry(0, get_ram_base() + 0x400);
 	m_hi_ram_bank->configure_entries(0, 4, get_ram_base(), 0x100);
 
@@ -507,7 +515,7 @@ void a26_rom_e7_device::install_memory_handlers(address_space *space)
 	m_view[1].install_write_bank(0x1000, 0x13ff, m_lo_ram_bank);
 	m_view[1].install_read_bank(0x1400, 0x17ff, m_lo_ram_bank);
 
-	space->install_rom(0x1800, 0x1fff, get_rom_base() + 7 * 0x800);
+	space->install_rom(0x1800, 0x1fff, get_rom_base() + (m_banks - 1) * 0x800);
 	space->install_write_bank(0x1800, 0x18ff, m_hi_ram_bank);
 	space->install_read_bank(0x1900, 0x19ff, m_hi_ram_bank);
 	space->install_write_handler(0x1fe0, 0x1fe7, write8sm_delegate(*this, FUNC(a26_rom_e7_device::switch_rom_bank)));
@@ -521,7 +529,10 @@ void a26_rom_e7_device::install_memory_handlers(address_space *space)
 void a26_rom_e7_device::switch_rom_bank(offs_t offset, uint8_t data)
 {
 	m_view.select(offset == 0x07 ? 1 : 0);
-	m_rom_bank->set_entry(offset);
+	if (offset == 0x07)
+		m_rom_bank->set_entry(m_banks - 1);
+	else
+		m_rom_bank->set_entry((offset + m_banks * 2 - 8) % m_banks);
 }
 
 void a26_rom_e7_device::switch_ram_bank(offs_t offset, uint8_t data)

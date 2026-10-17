@@ -205,6 +205,7 @@ protected:
 	memory_bank_creator m_lo_ram_bank;
 	memory_bank_creator m_hi_ram_bank;
 	memory_view m_view;
+	uint8_t m_banks;
 };
 
 
