@@ -41,6 +41,7 @@ public:
 
 	int get_cart_type() { return m_type; }
 	static int identify_cart_type(const uint8_t *ROM, uint32_t len);
+	static int default_type_for_size(uint32_t len);
 
 protected:
 	// device_t implementation
