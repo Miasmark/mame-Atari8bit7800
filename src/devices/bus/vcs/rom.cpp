@@ -40,6 +40,7 @@ DEFINE_DEVICE_TYPE(A26_ROM_E7,    a26_rom_e7_device,    "vcs_e7",    "Atari VCS 
 DEFINE_DEVICE_TYPE(A26_ROM_UA,    a26_rom_ua_device,    "vcs_ua",    "Atari VCS 2600 ROM Carts w/UA bankswitch")
 DEFINE_DEVICE_TYPE(A26_ROM_UASW,  a26_rom_uasw_device,  "vcs_uasw",  "Atari VCS 2600 ROM Carts w/UA bankswitch (swapped banks)")
 DEFINE_DEVICE_TYPE(A26_ROM_0840,  a26_rom_0840_device,  "vcs_0840",  "Atari VCS 2600 ROM Carts w/0840 bankswitch")
+DEFINE_DEVICE_TYPE(A26_ROM_0FA0,  a26_rom_0fa0_device,  "vcs_0fa0",  "Atari VCS 2600 ROM Carts w/0FA0 bankswitch")
 DEFINE_DEVICE_TYPE(A26_ROM_CV,    a26_rom_cv_device,    "vcs_cv",    "Atari VCS 2600 ROM Carts w/Commavid bankswitch")
 DEFINE_DEVICE_TYPE(A26_ROM_DC,    a26_rom_dc_device,    "vcs_dc",    "Atari VCS 2600 ROM Carts w/Dynacom bankswitch")
 DEFINE_DEVICE_TYPE(A26_ROM_FV,    a26_rom_fv_device,    "vcs_fv",    "Atari VCS 2600 ROM Carts w/FV bankswitch")
@@ -777,6 +778,44 @@ void a26_rom_0840_device::install_memory_handlers(address_space *space)
 	space->install_readwrite_tap(0x0800, 0x0fff, "bank",
 			[this] (offs_t address, u8 &, u8) { if (!machine().side_effects_disabled()) m_bank->set_entry(BIT(address, 6)); },
 			[this] (offs_t address, u8 &, u8) { if (!machine().side_effects_disabled()) m_bank->set_entry(BIT(address, 6)); });
+}
+
+
+
+/*-------------------------------------------------
+ "0FA0 Bankswitch" Carts:
+ two 4K banks, selected by read/write access to
+ 0x0fa0 (bank 0) or 0x0fc0 (bank 1). Only A12, A10,
+ A9, A7, A6 and A5 are decoded, so 0x06a0 / 0x06c0
+ with any of A11, A8 and A4-A0 work as well. The
+ board starts in bank 1.
+
+ GAMES: Brazilian releases (Fotomania)
+
+ -------------------------------------------------*/
+
+a26_rom_0fa0_device::a26_rom_0fa0_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+	: a26_rom_base_device(mconfig, A26_ROM_0FA0, tag, owner, clock)
+	, m_bank(*this, "bank")
+{
+}
+
+void a26_rom_0fa0_device::device_reset()
+{
+	m_bank->set_entry(1);
+}
+
+void a26_rom_0fa0_device::install_memory_handlers(address_space *space)
+{
+	m_bank->configure_entries(0, 2, get_rom_base(), 0x1000);
+
+	space->install_read_bank(0x1000, 0x1fff, m_bank);
+	space->install_readwrite_tap(0x06a0, 0x06bf, 0x0900, "bank0",
+			[this] (offs_t, u8 &, u8) { if (!machine().side_effects_disabled()) m_bank->set_entry(0); },
+			[this] (offs_t, u8 &, u8) { if (!machine().side_effects_disabled()) m_bank->set_entry(0); });
+	space->install_readwrite_tap(0x06c0, 0x06df, 0x0900, "bank1",
+			[this] (offs_t, u8 &, u8) { if (!machine().side_effects_disabled()) m_bank->set_entry(1); },
+			[this] (offs_t, u8 &, u8) { if (!machine().side_effects_disabled()) m_bank->set_entry(1); });
 }
 
 
