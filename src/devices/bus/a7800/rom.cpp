@@ -619,4 +619,3 @@ void a78_rom_p800_sg9_device::device_add_mconfig(machine_config &config)
 
 	POKEY(config, m_pokey800, DERIVED_CLOCK(1, 1)).add_route(ALL_OUTPUTS, "pokey_800", 1.00);
 }
-
