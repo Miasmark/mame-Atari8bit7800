@@ -149,6 +149,7 @@ protected:
 	void switch_B_w(uint8_t data);
 	void irq_callback(int state);
 	uint16_t a2600_read_input_port(offs_t offset);
+	bool light_sense(int x255, int y255);
 	uint8_t a2600_get_databus_contents(offs_t offset);
 	void a2600_tia_vsync_callback(uint16_t data);
 
@@ -381,6 +382,14 @@ void a2600_base_state::switch_B_w(uint8_t data)
 
 void a2600_base_state::irq_callback(int state)
 {
+}
+
+// light guns: what their sensor sees depends on where the TIA's beam is in the frame the game
+// started with VSYNC, and on what it drew there
+bool a2600_base_state::light_sense(int x255, int y255)
+{
+	const rectangle &visarea = m_screen->visible_area();
+	return m_tia->light_sensor(visarea.left() + x255 * visarea.width() / 256, visarea.top() + y255 * visarea.height() / 256);
 }
 
 uint16_t a2600_base_state::a2600_read_input_port(offs_t offset)
@@ -639,7 +648,9 @@ void a2600_base_state::a2600_base_ntsc(machine_config &config)
 	m_riot->irq_wr_callback().set(FUNC(a2600_state::irq_callback));
 
 	VCS_CONTROL_PORT(config, m_joy1, vcs_control_port_devices, "joy");
+	m_joy1->set_light_sense_callback(FUNC(a2600_base_state::light_sense));
 	VCS_CONTROL_PORT(config, m_joy2, vcs_control_port_devices, "joy");
+	m_joy2->set_light_sense_callback(FUNC(a2600_base_state::light_sense));
 }
 
 
@@ -672,7 +683,9 @@ void a2600_base_state::a2600_base_pal(machine_config &config)
 	m_riot->irq_wr_callback().set(FUNC(a2600_state::irq_callback));
 
 	VCS_CONTROL_PORT(config, m_joy1, vcs_control_port_devices, "joy");
+	m_joy1->set_light_sense_callback(FUNC(a2600_base_state::light_sense));
 	VCS_CONTROL_PORT(config, m_joy2, vcs_control_port_devices, "joy");
+	m_joy2->set_light_sense_callback(FUNC(a2600_base_state::light_sense));
 }
 
 
