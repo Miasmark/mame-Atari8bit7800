@@ -18848,7 +18848,7 @@ MOS Atari-made game NTSC ROMs had a CO16xxx number and PAL ROMs had CO17xxx numb
 		</part>
 	</software>
 
-	<software name="stayfr2d" cloneof="stayfr2" supported="no">
+	<software name="stayfr2d" cloneof="stayfr2">
 		<description>Stay Frosty 2 (NTSC, demo)</description>
 		<year>2013</year>
 		<publisher>Spiceware</publisher>
@@ -18875,7 +18875,7 @@ MOS Atari-made game NTSC ROMs had a CO16xxx number and PAL ROMs had CO17xxx numb
 		</part>
 	</software>
 
-	<software name="stayfr2de" cloneof="stayfr2" supported="no">
+	<software name="stayfr2de" cloneof="stayfr2">
 		<description>Stay Frosty 2 (PAL, demo)</description>
 		<year>2013</year>
 		<publisher>Spiceware</publisher>
