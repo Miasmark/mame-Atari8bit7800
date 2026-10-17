@@ -35,6 +35,7 @@ DEFINE_DEVICE_TYPE(A26_ROM_FA2,   a26_rom_fa2_device,   "vcs_fa2",   "Atari VCS 
 DEFINE_DEVICE_TYPE(A26_ROM_FE,    a26_rom_fe_device,    "vcs_fe",    "Atari VCS 2600 ROM Carts w/FE bankswitch")
 DEFINE_DEVICE_TYPE(A26_ROM_3E,    a26_rom_3e_device,    "vcs_3e",    "Atari VCS 2600 ROM Carts w/3E bankswitch")
 DEFINE_DEVICE_TYPE(A26_ROM_3F,    a26_rom_3f_device,    "vcs_3f",    "Atari VCS 2600 ROM Carts w/3F bankswitch")
+DEFINE_DEVICE_TYPE(A26_ROM_3EP,   a26_rom_3ep_device,   "vcs_3ep",   "Atari VCS 2600 ROM Carts w/3E+ bankswitch")
 DEFINE_DEVICE_TYPE(A26_ROM_E0,    a26_rom_e0_device,    "vcs_e0",    "Atari VCS 2600 ROM Carts w/E0 bankswitch")
 DEFINE_DEVICE_TYPE(A26_ROM_E7,    a26_rom_e7_device,    "vcs_e7",    "Atari VCS 2600 ROM Carts w/E7 bankswitch")
 DEFINE_DEVICE_TYPE(A26_ROM_UA,    a26_rom_ua_device,    "vcs_ua",    "Atari VCS 2600 ROM Carts w/UA bankswitch")
@@ -487,8 +488,9 @@ void a26_rom_3e_device::device_reset()
 
 void a26_rom_3e_device::install_memory_handlers(address_space *space)
 {
-	m_rom_bank_mask = (get_rom_size() / 0x800) - 1;
-	m_ram_bank_mask = (get_ram_size() / 0x400) - 1;
+	// the bank numbers wrap around at the number of banks (a power of 2 on real boards)
+	m_rom_bank_mask = std::max<uint32_t>(get_rom_size() / 0x800, 1) - 1;
+	m_ram_bank_mask = std::max<uint32_t>(get_ram_size() / 0x400, 1) - 1;
 	m_rom_bank->configure_entries(0, m_rom_bank_mask + 1, get_rom_base(), 0x800);
 	m_ram_bank->configure_entries(0, m_ram_bank_mask + 1, get_ram_base(), 0x400);
 
@@ -509,13 +511,13 @@ void a26_rom_3e_device::install_memory_handlers(address_space *space)
 
 void a26_rom_3e_device::select_ram_bank(offs_t address, uint8_t data)
 {
-	m_ram_bank->set_entry(data & m_ram_bank_mask);
+	m_ram_bank->set_entry(data % (m_ram_bank_mask + 1));
 	m_view.select(1);
 }
 
 void a26_rom_3e_device::select_rom_bank(offs_t address, uint8_t data)
 {
-	m_rom_bank->set_entry(data & m_rom_bank_mask);
+	m_rom_bank->set_entry(data % (m_rom_bank_mask + 1));
 	m_view.select(0);
 }
 
@@ -546,7 +548,8 @@ void a26_rom_3f_device::device_reset()
 
 void a26_rom_3f_device::install_memory_handlers(address_space *space)
 {
-	m_bank_mask = (get_rom_size() / 0x800) - 1;
+	// the bank numbers wrap around at the number of banks (a power of 2 on real boards)
+	m_bank_mask = std::max<uint32_t>(get_rom_size() / 0x800, 1) - 1;
 	m_bank->configure_entries(0, get_rom_size() / 0x800, get_rom_base(), 0x800);
 
 	space->install_read_bank(0x1000, 0x17ff, m_bank);
@@ -558,7 +561,82 @@ void a26_rom_3f_device::install_memory_handlers(address_space *space)
 
 void a26_rom_3f_device::select_bank(offs_t offset, uint8_t data)
 {
-	m_bank->set_entry(data & m_bank_mask);
+	m_bank->set_entry(data % (m_bank_mask + 1));
+}
+
+
+
+/*-------------------------------------------------
+ "3E+ Bankswitch" Carts:
+ a 3E/3F extension with four 1K segments at 1000,
+ 1400, 1800 and 1c00, each of which can hold any 1K
+ ROM bank or 512 byte RAM bank:
+ writing to 0x3f puts ROM bank D5-D0 in segment D7-D6
+ writing to 0x3e puts RAM bank D5-D0 in segment D7-D6,
+ the RAM read port being the first 512 bytes of the
+ segment and the write port the last 512
+ That makes up to 64K of ROM and 32K of RAM. The
+ segments start with the first 1K of ROM, so the
+ reset vector is at the end of the first 1K.
+
+ GAMES: homebrew
+
+ -------------------------------------------------*/
+
+a26_rom_3ep_device::a26_rom_3ep_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+	: a26_rom_base_device(mconfig, A26_ROM_3EP, tag, owner, clock)
+	, m_segment_bank{ 0, 0, 0, 0 }
+	, m_segment_ram{ false, false, false, false }
+{
+}
+
+void a26_rom_3ep_device::device_start()
+{
+	save_item(NAME(m_segment_bank));
+	save_item(NAME(m_segment_ram));
+}
+
+void a26_rom_3ep_device::device_reset()
+{
+	for (int segment = 0; segment < 4; segment++)
+	{
+		m_segment_bank[segment] = 0;
+		m_segment_ram[segment] = false;
+	}
+}
+
+void a26_rom_3ep_device::install_memory_handlers(address_space *space)
+{
+	space->install_read_handler(0x1000, 0x1fff, read8sm_delegate(*this, FUNC(a26_rom_3ep_device::read)));
+	space->install_write_handler(0x1000, 0x1fff, write8sm_delegate(*this, FUNC(a26_rom_3ep_device::write)));
+	space->install_write_tap(0x3e, 0x3e, "ram_bank",
+			[this] (offs_t, u8 &data, u8) { if (!machine().side_effects_disabled()) select_bank(data, true); });
+	space->install_write_tap(0x3f, 0x3f, "rom_bank",
+			[this] (offs_t, u8 &data, u8) { if (!machine().side_effects_disabled()) select_bank(data, false); });
+}
+
+void a26_rom_3ep_device::select_bank(uint8_t data, bool ram)
+{
+	m_segment_bank[data >> 6] = data & 0x3f;
+	m_segment_ram[data >> 6] = ram;
+}
+
+uint8_t a26_rom_3ep_device::read(offs_t offset)
+{
+	int const segment = offset >> 10;
+	if (!m_segment_ram[segment])
+		return m_rom[(m_segment_bank[segment] * 0x400 + (offset & 0x3ff)) % m_rom_size];
+	else if (!BIT(offset, 9) && !m_ram.empty())
+		return m_ram[(m_segment_bank[segment] * 0x200 + (offset & 0x1ff)) % m_ram.size()];
+	else
+		return 0xff;
+}
+
+void a26_rom_3ep_device::write(offs_t offset, uint8_t data)
+{
+	int const segment = offset >> 10;
+	if (m_segment_ram[segment] && BIT(offset, 9) && !m_ram.empty())
+		m_ram[(m_segment_bank[segment] * 0x200 + (offset & 0x1ff)) % m_ram.size()] = data;
 }
 
 

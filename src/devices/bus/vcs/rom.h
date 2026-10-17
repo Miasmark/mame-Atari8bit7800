@@ -240,6 +240,28 @@ protected:
 };
 
 
+// ======================> a26_rom_3ep_device
+
+class a26_rom_3ep_device : public a26_rom_base_device
+{
+public:
+	a26_rom_3ep_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
+
+	virtual void install_memory_handlers(address_space *space) override;
+
+protected:
+	virtual void device_start() override ATTR_COLD;
+	virtual void device_reset() override ATTR_COLD;
+
+	void select_bank(uint8_t data, bool ram);
+	uint8_t read(offs_t offset);
+	void write(offs_t offset, uint8_t data);
+
+	uint8_t m_segment_bank[4];
+	bool m_segment_ram[4];
+};
+
+
 // ======================> a26_rom_e0_device
 
 class a26_rom_e0_device : public a26_rom_base_device
@@ -519,6 +541,7 @@ DECLARE_DEVICE_TYPE(A26_ROM_FA2,   a26_rom_fa2_device)
 DECLARE_DEVICE_TYPE(A26_ROM_FE,    a26_rom_fe_device)
 DECLARE_DEVICE_TYPE(A26_ROM_3E,    a26_rom_3e_device)
 DECLARE_DEVICE_TYPE(A26_ROM_3F,    a26_rom_3f_device)
+DECLARE_DEVICE_TYPE(A26_ROM_3EP,   a26_rom_3ep_device)
 DECLARE_DEVICE_TYPE(A26_ROM_E0,    a26_rom_e0_device)
 DECLARE_DEVICE_TYPE(A26_ROM_E7,    a26_rom_e7_device)
 DECLARE_DEVICE_TYPE(A26_ROM_UA,    a26_rom_ua_device)
