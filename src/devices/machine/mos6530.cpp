@@ -142,8 +142,10 @@ void mos6530_device_base::device_start()
 	m_timershift = 10;
 	m_timerstate = TIMER_COUNTING;
 	m_timer->adjust(attotime::from_ticks(256 << m_timershift, clock()));
+	m_timer_clock = clock();
 
 	// state saving
+	save_item(NAME(m_timer_clock));
 	save_item(NAME(m_pa_in));
 	save_item(NAME(m_pa_out));
 	save_item(NAME(m_pa_ddr));
@@ -185,6 +187,23 @@ void mos6530_device_base::device_reset()
 	update_pb();
 	update_irq();
 	edge_detect();
+}
+
+
+//-------------------------------------------------
+//  device_clock_changed - keep the count: the ticks
+//  left at the old rate are left at the new one (the
+//  7800 runs its RIOT at 1.19 MHz in 2600 mode)
+//-------------------------------------------------
+
+void mos6530_device_base::device_clock_changed()
+{
+	if (m_timer && m_timer->enabled() && m_timer_clock && clock())
+	{
+		uint64_t const ticks = m_timer->remaining().as_ticks(m_timer_clock);
+		m_timer->adjust(attotime::from_ticks(ticks, clock()));
+	}
+	m_timer_clock = clock();
 }
 
 
