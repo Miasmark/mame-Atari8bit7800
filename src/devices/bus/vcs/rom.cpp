@@ -41,6 +41,7 @@ DEFINE_DEVICE_TYPE(A26_ROM_UA,    a26_rom_ua_device,    "vcs_ua",    "Atari VCS 
 DEFINE_DEVICE_TYPE(A26_ROM_UASW,  a26_rom_uasw_device,  "vcs_uasw",  "Atari VCS 2600 ROM Carts w/UA bankswitch (swapped banks)")
 DEFINE_DEVICE_TYPE(A26_ROM_0840,  a26_rom_0840_device,  "vcs_0840",  "Atari VCS 2600 ROM Carts w/0840 bankswitch")
 DEFINE_DEVICE_TYPE(A26_ROM_0FA0,  a26_rom_0fa0_device,  "vcs_0fa0",  "Atari VCS 2600 ROM Carts w/0FA0 bankswitch")
+DEFINE_DEVICE_TYPE(A26_ROM_03E0,  a26_rom_03e0_device,  "vcs_03e0",  "Atari VCS 2600 ROM Carts w/03E0 bankswitch")
 DEFINE_DEVICE_TYPE(A26_ROM_CV,    a26_rom_cv_device,    "vcs_cv",    "Atari VCS 2600 ROM Carts w/Commavid bankswitch")
 DEFINE_DEVICE_TYPE(A26_ROM_DC,    a26_rom_dc_device,    "vcs_dc",    "Atari VCS 2600 ROM Carts w/Dynacom bankswitch")
 DEFINE_DEVICE_TYPE(A26_ROM_FV,    a26_rom_fv_device,    "vcs_fv",    "Atari VCS 2600 ROM Carts w/FV bankswitch")
@@ -816,6 +817,56 @@ void a26_rom_0fa0_device::install_memory_handlers(address_space *space)
 	space->install_readwrite_tap(0x06c0, 0x06df, 0x0900, "bank1",
 			[this] (offs_t, u8 &, u8) { if (!machine().side_effects_disabled()) m_bank->set_entry(1); },
 			[this] (offs_t, u8 &, u8) { if (!machine().side_effects_disabled()) m_bank->set_entry(1); });
+}
+
+
+
+/*-------------------------------------------------
+ "03E0 Bankswitch" Carts:
+ Parker Bros. 8K games (E0) on a Brazilian board:
+ four 1K segments, the last fixed to the last 1K of
+ ROM, the others selected by read/write access to an
+ address with A12 = 0 and A9 = A8 = A7 = 1
+ (0x0380-0x03ff and mirrors). A0-A2 give the 1K bank
+ and A4 = 0, A5 = 0, A6 = 0 load it into segment 0, 1,
+ 2 respectively (0x03e0, 0x03d0, 0x03b0 + bank).
+
+ GAMES: Brazilian releases of Parker Bros. games
+
+ -------------------------------------------------*/
+
+a26_rom_03e0_device::a26_rom_03e0_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+	: a26_rom_base_device(mconfig, A26_ROM_03E0, tag, owner, clock)
+	, m_bank(*this, "bank%u", 0U)
+{
+}
+
+void a26_rom_03e0_device::device_reset()
+{
+	m_bank[0]->set_entry(4);
+	m_bank[1]->set_entry(5);
+	m_bank[2]->set_entry(6);
+}
+
+void a26_rom_03e0_device::install_memory_handlers(address_space *space)
+{
+	for (auto &bank : m_bank)
+		bank->configure_entries(0, 8, get_rom_base(), 0x400);
+
+	space->install_read_bank(0x1000, 0x13ff, m_bank[0]);
+	space->install_read_bank(0x1400, 0x17ff, m_bank[1]);
+	space->install_read_bank(0x1800, 0x1bff, m_bank[2]);
+	space->install_rom(0x1c00, 0x1fff, get_rom_base() + 7 * 0x400);
+	space->install_readwrite_tap(0x0380, 0x03ff, 0x0c00, "bank",
+			[this] (offs_t address, u8 &, u8) { if (!machine().side_effects_disabled()) switch_bank(address); },
+			[this] (offs_t address, u8 &, u8) { if (!machine().side_effects_disabled()) switch_bank(address); });
+}
+
+void a26_rom_03e0_device::switch_bank(offs_t address)
+{
+	for (int segment = 0; segment < 3; segment++)
+		if (!BIT(address, 4 + segment))
+			m_bank[segment]->set_entry(address & 7);
 }
 
 
