@@ -59,6 +59,7 @@ protected:
 	// device-level overrides
 	virtual void device_start() override ATTR_COLD;
 	virtual void device_reset() override ATTR_COLD;
+	virtual ioport_constructor device_input_ports() const override ATTR_COLD;
 
 	// device_palette_interface overrides
 	virtual uint32_t palette_entries() const noexcept override { return TIA_PALETTE_LENGTH; }
@@ -114,6 +115,7 @@ private:
 
 	required_device<cpu_device> m_maincpu;
 	required_device<tia_device> m_tia;
+	required_ioport m_config;
 
 	struct player_gfx p0gfx;
 	struct player_gfx p1gfx;
