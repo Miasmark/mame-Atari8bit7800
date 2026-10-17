@@ -289,10 +289,22 @@ public:
 	virtual void install_memory_handlers(address_space *space) override;
 
 protected:
+	a26_rom_ua_device(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, uint32_t clock, uint8_t swap);
+
 	virtual void device_reset() override ATTR_COLD;
 	void change_bank(offs_t offset);
 
 	memory_bank_creator m_bank;
+	uint8_t const m_swap;
+};
+
+
+// ======================> a26_rom_uasw_device
+
+class a26_rom_uasw_device : public a26_rom_ua_device
+{
+public:
+	a26_rom_uasw_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
 };
 
 
@@ -461,6 +473,7 @@ DECLARE_DEVICE_TYPE(A26_ROM_3F,    a26_rom_3f_device)
 DECLARE_DEVICE_TYPE(A26_ROM_E0,    a26_rom_e0_device)
 DECLARE_DEVICE_TYPE(A26_ROM_E7,    a26_rom_e7_device)
 DECLARE_DEVICE_TYPE(A26_ROM_UA,    a26_rom_ua_device)
+DECLARE_DEVICE_TYPE(A26_ROM_UASW,  a26_rom_uasw_device)
 DECLARE_DEVICE_TYPE(A26_ROM_CV,    a26_rom_cv_device)
 DECLARE_DEVICE_TYPE(A26_ROM_DC,    a26_rom_dc_device)
 DECLARE_DEVICE_TYPE(A26_ROM_FV,    a26_rom_fv_device)

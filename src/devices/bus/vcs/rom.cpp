@@ -38,6 +38,7 @@ DEFINE_DEVICE_TYPE(A26_ROM_3F,    a26_rom_3f_device,    "vcs_3f",    "Atari VCS 
 DEFINE_DEVICE_TYPE(A26_ROM_E0,    a26_rom_e0_device,    "vcs_e0",    "Atari VCS 2600 ROM Carts w/E0 bankswitch")
 DEFINE_DEVICE_TYPE(A26_ROM_E7,    a26_rom_e7_device,    "vcs_e7",    "Atari VCS 2600 ROM Carts w/E7 bankswitch")
 DEFINE_DEVICE_TYPE(A26_ROM_UA,    a26_rom_ua_device,    "vcs_ua",    "Atari VCS 2600 ROM Carts w/UA bankswitch")
+DEFINE_DEVICE_TYPE(A26_ROM_UASW,  a26_rom_uasw_device,  "vcs_uasw",  "Atari VCS 2600 ROM Carts w/UA bankswitch (swapped banks)")
 DEFINE_DEVICE_TYPE(A26_ROM_CV,    a26_rom_cv_device,    "vcs_cv",    "Atari VCS 2600 ROM Carts w/Commavid bankswitch")
 DEFINE_DEVICE_TYPE(A26_ROM_DC,    a26_rom_dc_device,    "vcs_dc",    "Atari VCS 2600 ROM Carts w/Dynacom bankswitch")
 DEFINE_DEVICE_TYPE(A26_ROM_FV,    a26_rom_fv_device,    "vcs_fv",    "Atari VCS 2600 ROM Carts w/FV bankswitch")
@@ -706,15 +707,27 @@ void a26_rom_e7_device::switch_ram_bank(offs_t offset, uint8_t data)
 
  -------------------------------------------------*/
 
-a26_rom_ua_device::a26_rom_ua_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
-	: a26_rom_base_device(mconfig, A26_ROM_UA, tag, owner, clock)
+a26_rom_ua_device::a26_rom_ua_device(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, uint32_t clock, uint8_t swap)
+	: a26_rom_base_device(mconfig, type, tag, owner, clock)
 	, m_bank(*this, "bank")
+	, m_swap(swap)
+{
+}
+
+a26_rom_ua_device::a26_rom_ua_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+	: a26_rom_ua_device(mconfig, A26_ROM_UA, tag, owner, clock, 0)
+{
+}
+
+// images of UA carts dumped with the two banks the other way round
+a26_rom_uasw_device::a26_rom_uasw_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+	: a26_rom_ua_device(mconfig, A26_ROM_UASW, tag, owner, clock, 1)
 {
 }
 
 void a26_rom_ua_device::device_reset()
 {
-	m_bank->set_entry(0);
+	m_bank->set_entry(m_swap);
 }
 
 void a26_rom_ua_device::install_memory_handlers(address_space *space)
@@ -729,7 +742,7 @@ void a26_rom_ua_device::install_memory_handlers(address_space *space)
 
 void a26_rom_ua_device::change_bank(offs_t offset)
 {
-	m_bank->set_entry((offset >> 6) & 1);
+	m_bank->set_entry(((offset >> 6) & 1) ^ m_swap);
 }
 
 
