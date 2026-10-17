@@ -102,25 +102,34 @@ jobs:
 
   macos:
     needs: version
-    runs-on: macos-14
+    # Apple silicon; the Xcode of macos-14 is too old for MAME 0.289
+    runs-on: macos-15
     env:
-      SDL_VERSION: 2.32.10
+      SDL_VERSION: 3.2.24
     steps:
     - uses: actions/checkout@v4
-    - name: SDL2 framework
+    - name: SDL3 framework
       run: |
-        curl -sSL -o SDL2.dmg "https://github.com/libsdl-org/SDL/releases/download/release-${SDL_VERSION}/SDL2-${SDL_VERSION}.dmg"
-        hdiutil attach -nobrowse -mountpoint /tmp/sdl2 SDL2.dmg
-        mkdir sdl && cp -R /tmp/sdl2/SDL2.framework sdl/
-        hdiutil detach /tmp/sdl2
+        curl -sSL -o SDL3.dmg "https://github.com/libsdl-org/SDL/releases/download/release-${SDL_VERSION}/SDL3-${SDL_VERSION}.dmg"
+        hdiutil attach -nobrowse -readonly -mountpoint /tmp/sdl3 SDL3.dmg
+        find /tmp/sdl3 -maxdepth 4 -name '*.framework'
+        # the macOS framework of the release's xcframework
+        fw=$(find /tmp/sdl3 -maxdepth 4 -name SDL3.framework -path '*macos*' | head -n 1)
+        [ -n "$fw" ] || fw=$(find /tmp/sdl3 -maxdepth 4 -name SDL3.framework | head -n 1)
+        mkdir sdl && cp -R "$fw" sdl/
+        hdiutil detach /tmp/sdl3
+        lipo -info sdl/SDL3.framework/SDL3
     - name: Build
+      env:
+        USE_LIBSDL: 0
       run: make -j3 SDL_FRAMEWORK_PATH="$PWD/sdl/"
     - name: Package
       run: |
         name=mame-${{ needs.version.outputs.name }}-macos-arm64
         scripts/atari-release/stage.sh ./mame "${name}" "${{ needs.version.outputs.name }}" "${{ needs.version.outputs.source }}"
-        cp -R sdl/SDL2.framework "${name}/"
+        cp -R sdl/SDL3.framework "${name}/"
         # look for SDL next to the executable, not where it was built
+        otool -l "${name}/mame" | grep -A2 LC_RPATH
         install_name_tool -delete_rpath "$PWD/sdl/" "${name}/mame" || install_name_tool -delete_rpath "$PWD/sdl" "${name}/mame"
         install_name_tool -add_rpath @executable_path "${name}/mame"
         # not signed by a developer: an ad hoc signature, which Apple silicon needs to run it at all
