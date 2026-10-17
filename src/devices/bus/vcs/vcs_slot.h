@@ -58,6 +58,8 @@ private:
 	static bool detect_modeF6(const uint8_t *cart, uint32_t len);
 	static bool detect_mode3E(const uint8_t *cart, uint32_t len);
 	static bool detect_modeSS(const uint8_t *cart, uint32_t len);
+	static bool is_ss_tape_size(uint32_t len);
+	static bool detect_ss_tape(const uint8_t *cart, uint32_t len);
 	static bool detect_modeFE(const uint8_t *cart, uint32_t len);
 	static bool detect_modeE0(const uint8_t *cart, uint32_t len);
 	static bool detect_modeCV(const uint8_t *cart, uint32_t len);
