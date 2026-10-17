@@ -122,6 +122,8 @@ jobs:
     - name: Build
       env:
         USE_LIBSDL: 0
+        # without it the binary would need the runner's macOS; 11 is the first for Apple silicon
+        MACOSX_DEPLOYMENT_TARGET: '11.0'
       run: make -j3 SDL_FRAMEWORK_PATH="$PWD/sdl/"
     - name: Package
       run: |
@@ -135,6 +137,7 @@ jobs:
         # not signed by a developer: an ad hoc signature, which Apple silicon needs to run it at all
         codesign --force --sign - "${name}/mame"
         otool -L "${name}/mame" | grep -i sdl
+        otool -l "${name}/mame" | grep -A4 LC_BUILD_VERSION
         "${name}/mame" -validate
         ditto -c -k --keepParent "${name}" "${name}.zip"
     - uses: actions/upload-artifact@v4
