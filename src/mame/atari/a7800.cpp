@@ -101,9 +101,13 @@
 #include "emu.h"
 
 #include "maria.h"
+#include "tia.h"
 
 #include "bus/a7800/a78_carts.h"
+#include "bus/vcs/vcs_carts.h"
+#include "bus/vcs/vcs_slot.h"
 #include "cpu/m6502/m6502.h"
+#include "machine/bankdev.h"
 #include "machine/mos6530.h"
 #include "machine/timer.h"
 #include "sound/tiaintf.h"
@@ -130,8 +134,13 @@ public:
 		m_io_console_buttons(*this, "CONSOLE"),
 		m_cart(*this, "cartslot"),
 		m_screen(*this, "screen"),
+		m_palette(*this, "palette"),
+		m_vcsbus(*this, "vcsbus"),
+		m_vcs_cart(*this, "vcs_cartslot"),
+		m_tia_video(*this, "tia_video"),
 		m_bios_view(*this, "bios_view"),
-		m_maria_bios_view(*this, "maria_bios_view")
+		m_maria_bios_view(*this, "maria_bios_view"),
+		m_vcs_view(*this, "vcs_view")
 	{
 	}
 
@@ -140,6 +149,7 @@ protected:
 
 	virtual void machine_start() override ATTR_COLD;
 	virtual void machine_reset() override ATTR_COLD;
+	virtual void device_post_load() override;
 
 	void a7800_common(machine_config &config, uint32_t clock) ATTR_COLD;
 
@@ -159,6 +169,20 @@ protected:
 
 	void a7800_mem(address_map &map) ATTR_COLD;
 	void maria_mem(address_map &map) ATTR_COLD;
+	void vcs_bus_map(address_map &map) ATTR_COLD;
+
+	// 2600 mode: MARIA off, the TIA drawing, the CPU at 1.19 MHz seeing a 6507's 13-bit bus
+	uint32_t screen_update(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect);
+	uint8_t vcs_view_r(offs_t offset);
+	void vcs_view_w(offs_t offset, uint8_t data);
+	uint8_t cart_r(offs_t offset);
+	void cart_w(offs_t offset, uint8_t data);
+	uint8_t vcs_cart7800_r(offs_t offset);
+	void vcs_cart7800_w(offs_t offset, uint8_t data);
+	uint16_t vcs_input_r(offs_t offset);
+	uint8_t vcs_databus_r(offs_t offset);
+	void set_vcs_mode(bool on);
+	void apply_mode();
 
 	int32_t m_lines = 263;
 	bool m_ispal = false;
@@ -174,6 +198,13 @@ protected:
 	int m_pixelx = 0;
 	bool m_cart_ram_exec_warned = false;
 	uint8_t m_skip_bios = 0;        // the -bios number of "skip" on this machine
+	uint32_t m_clock = 0;           // the master clock (14.32 MHz NTSC, 14.19 MHz PAL)
+	bool m_vcs_mode = false;        // 2600 mode (INPTCTRL locked with MARIA disabled)
+	bool m_vcs_window = false;      // a 2600 cartridge and no 7800 one
+	bitmap_ind16 m_maria_bitmap;
+	int m_7800_width = 0, m_7800_height = 0;
+	rectangle m_7800_visarea;
+	attotime m_7800_period;
 
 	required_device<m6502_device> m_maincpu;
 	required_device<tia_device> m_tia;
@@ -184,8 +215,13 @@ protected:
 	required_ioport m_io_console_buttons;
 	required_device<a78_cart_slot_device> m_cart;
 	required_device<screen_device> m_screen;
+	required_device<palette_device> m_palette;
+	required_device<address_map_bank_device> m_vcsbus;    // the 2600's 13-bit bus: TIA, RIOT, 2600 cartridge
+	required_device<vcs_cart_slot_device> m_vcs_cart;
+	required_device<tia_video_device> m_tia_video;
 	memory_view m_bios_view;
 	memory_view m_maria_bios_view;  // the same BIOS mapping, in MARIA's own address space
+	memory_view m_vcs_view;         // in 2600 mode, the whole of the CPU's space is the 2600 bus
 };
 
 class a7800_ntsc_state : public a7800_state
@@ -315,6 +351,10 @@ void a7800_state::tia_w(offs_t offset, uint8_t data)
 				m_bios_view.select(0);
 				m_maria_bios_view.select(0);
 			}
+			// locked with MARIA disabled: 2600 mode, until reset (the BIOS's 2600 bootstrap
+			// ends with INPTCTRL $FD: locked, MARIA off, cartridge on, TIA video on)
+			if (m_ctrl_lock && !BIT(m_ctrl_reg, 1))
+				set_vcs_mode(true);
 		}
 	}
 	m_tia->tia_sound_w(offset, data);
@@ -325,6 +365,9 @@ void a7800_state::tia_w(offs_t offset, uint8_t data)
 
 TIMER_DEVICE_CALLBACK_MEMBER(a7800_state::interrupt)
 {
+	if (m_vcs_mode)
+		return;     // MARIA is disabled: no DMA, no display list interrupts
+
 	// DMA Begins 7 cycles after hblank
 	m_dma_start_timer->adjust(m_maincpu->cycles_to_attotime(7));
 	m_maria->interrupt(m_lines);
@@ -393,11 +436,149 @@ void a7800_state::a7800_mem(address_map &map)
 								// Hardware tests show that only the page at 0x2700 appears at
 								// 0x2800, and only on some hardware (MARIA? motherboard?) revisions,
 								// and even then with inconsistent and unreliable results.
-	map(0x4000, 0xffff).w(m_cart, FUNC(a78_cart_slot_device::write_40xx));
-	map(0x4000, 0xffff).r(m_cart, FUNC(a78_cart_slot_device::read_40xx));
+	map(0x4000, 0xffff).rw(FUNC(a7800_state::cart_r), FUNC(a7800_state::cart_w));
 	// TODO: actually 0x8000-0xffff?
 	map(0xc000, 0xffff).view(m_bios_view);    // here also the BIOS can be accessed
 	m_bios_view[0](0xc000, 0xffff).rom().region("maincpu", 0);
+	map(0x0000, 0xffff).view(m_vcs_view);
+	m_vcs_view[0](0x0000, 0xffff).rw(FUNC(a7800_state::vcs_view_r), FUNC(a7800_state::vcs_view_w));
+}
+
+// The 2600 bus, as a 6507 decodes it (A12 selects the cartridge; below it, A7 and A9 pick the
+// TIA, the RIOT's RAM or its ports). The 2600 cartridge slot installs its handlers and bank
+// switching taps here, and in 2600 mode the CPU's whole space comes here, masked to 13 bits.
+void a7800_state::vcs_bus_map(address_map &map)
+{
+	map(0x0000, 0x007f).mirror(0x0f00).rw(m_tia_video, FUNC(tia_video_device::read), FUNC(tia_video_device::write));
+	map(0x0080, 0x00ff).mirror(0x0d00).m(m_riot, FUNC(mos6532_device::ram_map));
+	map(0x0280, 0x029f).mirror(0x0d00).m(m_riot, FUNC(mos6532_device::io_map));
+}
+
+uint8_t a7800_state::vcs_view_r(offs_t offset)
+{
+	return m_vcsbus->read8(offset & 0x1fff);
+}
+
+void a7800_state::vcs_view_w(offs_t offset, uint8_t data)
+{
+	m_vcsbus->write8(offset & 0x1fff, data);
+}
+
+// In 7800 mode a 2600 cartridge answers wherever A12 is set (it sees only A0-A12), which is how
+// the BIOS finds and checks it before handing over
+// the cartridge area: a 7800 cartridge, or a 2600 one's window (from the map itself, not installed
+// at start, so the 2600 mode view over the whole space is not shadowed by it)
+uint8_t a7800_state::cart_r(offs_t offset)
+{
+	return m_vcs_window ? vcs_cart7800_r(offset) : m_cart->read_40xx(offset);
+}
+
+void a7800_state::cart_w(offs_t offset, uint8_t data)
+{
+	if (m_vcs_window)
+		vcs_cart7800_w(offset, data);
+	else
+		m_cart->write_40xx(offset, data);
+}
+
+uint8_t a7800_state::vcs_cart7800_r(offs_t offset)
+{
+	const offs_t addr = offset + 0x4000;
+	return BIT(addr, 12) ? m_vcsbus->read8(addr & 0x1fff) : 0xff;
+}
+
+void a7800_state::vcs_cart7800_w(offs_t offset, uint8_t data)
+{
+	const offs_t addr = offset + 0x4000;
+	if (BIT(addr, 12))
+		m_vcsbus->write8(addr & 0x1fff, data);
+}
+
+// INPT0-3 (paddles) are not connected here; INPT4/5 are the joystick buttons, as in 7800 mode
+uint16_t a7800_state::vcs_input_r(offs_t offset)
+{
+	switch (offset)
+	{
+	case 4: return (tia_r(0x0c) & 0x80) ? 0xff : 0x7f;
+	case 5: return (tia_r(0x0d) & 0x80) ? 0xff : 0x7f;
+	default: return TIA_INPUT_PORT_ALWAYS_OFF;
+	}
+}
+
+// what the undriven TIA read bits see: the last byte on the data bus, approximated as the 2600
+// driver does (the operand of the instruction doing the read, or what LDA (zp),Y fetched)
+uint8_t a7800_state::vcs_databus_r(offs_t offset)
+{
+	auto dis = machine().disable_side_effects();
+	address_space &bus = m_vcsbus->space(AS_PROGRAM);
+	const uint16_t last_address = (m_maincpu->pc() + 1) & 0x1fff;
+	if (!(last_address & 0x1080))
+		return offset;
+	const uint8_t last_byte = bus.read_byte(last_address);
+	if (last_byte < 0x80 || last_byte == 0xff)
+		return last_byte;
+	const uint16_t prev_address = (last_address - 1) & 0x1fff;
+	if (!(prev_address & 0x1080))
+		return last_byte;
+	if (bus.read_byte(prev_address) == 0xb1)
+		return bus.read_byte(last_byte + 1);
+	return last_byte;
+}
+
+uint32_t a7800_state::screen_update(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect)
+{
+	if (m_vcs_mode)
+		return m_tia_video->screen_update(screen, bitmap, cliprect);
+
+	m_maria->screen_update(screen, m_maria_bitmap, cliprect);
+	pen_t const *const pens = m_palette->pens();
+	for (int y = cliprect.min_y; y <= cliprect.max_y; y++)
+	{
+		uint16_t const *const src = &m_maria_bitmap.pix(y);
+		uint32_t *const dst = &bitmap.pix(y);
+		for (int x = cliprect.min_x; x <= cliprect.max_x; x++)
+			dst[x] = pens[src[x]];
+	}
+	return 0;
+}
+
+void a7800_state::set_vcs_mode(bool on)
+{
+	if (on == m_vcs_mode)
+		return;
+	m_vcs_mode = on;
+	if (on)
+		logerror("2600 mode\n");
+	apply_mode();
+}
+
+// the CPU's and RIOT's clock, the address space and the screen, for the mode
+void a7800_state::apply_mode()
+{
+	if (m_vcs_mode)
+	{
+		m_vcs_view.select(0);
+		m_maincpu->set_unscaled_clock(m_clock / 12);   // 1.19 MHz: three TIA colour clocks a cycle
+		m_riot->set_unscaled_clock(m_clock / 12);
+		m_dma_start_timer->adjust(attotime::never);
+		m_visible_timer->adjust(attotime::never);
+		const int lines = m_ispal ? 312 : 262;
+		const rectangle visarea(26, 26 + 160 + 16 - 1, m_ispal ? 32 : 24, m_ispal ? (32 + 228 + 31 - 1) : (24 + 192 + 31 - 1));
+		m_screen->configure(228, lines, visarea, attotime(0, HZ_TO_ATTOSECONDS(m_clock / 4) * 228 * lines));
+	}
+	else
+	{
+		m_vcs_view.disable();
+		m_maincpu->set_unscaled_clock(m_clock / 8);
+		m_riot->set_unscaled_clock(m_clock / 8);
+		if (m_7800_width)
+			m_screen->configure(m_7800_width, m_7800_height, m_7800_visarea, m_7800_period);
+	}
+}
+
+void a7800_state::device_post_load()
+{
+	apply_mode();
 }
 
 // What MARIA's DMA sees: the CPU's map, the same RAM (shared) and the same cartridge, but its own
@@ -1426,6 +1607,16 @@ void a7800_state::machine_start()
 	save_item(NAME(m_ctrl_lock));
 	save_item(NAME(m_ctrl_reg));
 	save_item(NAME(m_maria_flag));
+	save_item(NAME(m_vcs_mode));
+
+	m_7800_width = m_screen->width();
+	m_7800_height = m_screen->height();
+	m_7800_visarea = m_screen->visible_area();
+	m_7800_period = m_screen->frame_period();
+	m_maria_bitmap.allocate(m_7800_width, m_7800_height);
+
+	// a 2600 cartridge (and no 7800 one): seen in 7800 mode where A12 is set, for the BIOS
+	m_vcs_window = !m_cart->exists() && m_vcs_cart->exists();
 
 	// install additional handlers, if needed
 	if (m_cart->exists())
@@ -1514,8 +1705,19 @@ void a7800_state::machine_reset()
 	m_maria_flag = false;
 	m_bios_view.select(0);
 	m_maria_bios_view.select(0);
+	set_vcs_mode(false);
 
-	if (system_bios() == m_skip_bios)
+	if (system_bios() == m_skip_bios && !m_cart->exists() && m_vcs_cart->exists())
+	{
+		// no BIOS and a 2600 cartridge: straight into 2600 mode, as the BIOS's bootstrap leaves it
+		// (INPTCTRL $FD), and the reset sequence takes the cartridge's own vector
+		m_ctrl_lock = true;
+		m_ctrl_reg = 0xfd;
+		m_bios_view.disable();
+		m_maria_bios_view.disable();
+		set_vcs_mode(true);
+	}
+	else if (system_bios() == m_skip_bios)
 	{
 		// no BIOS: start where Atari's NTSC BIOS leaves a signed cartridge (docs/bios.md in
 		// the a7800 toolkit, measured in MAME): INPTCTRL $16 (MARIA on, BIOS off, not locked),
@@ -1552,8 +1754,7 @@ void a7800_state::a7800_common(machine_config &config, uint32_t clock)
 
 	// video hardware
 	SCREEN(config, m_screen);
-	m_screen->set_screen_update(m_maria, FUNC(atari_maria_device::screen_update));
-	m_screen->set_palette("palette");
+	m_screen->set_screen_update(FUNC(a7800_state::screen_update));
 
 	PALETTE(config, "palette", FUNC(a7800_state::a7800_palette), std::size(a7800_colors));
 
@@ -1576,6 +1777,12 @@ void a7800_state::a7800_common(machine_config &config, uint32_t clock)
 	m_riot->pb_wr_callback().set(FUNC(a7800_state::riot_button_pullup_w));
 
 	A78_CART_SLOT(config, m_cart, clock/8, a7800_cart, nullptr);
+
+	// 2600 mode: the 2600's bus, its cartridge slot (-cart2600) and the TIA's video
+	ADDRESS_MAP_BANK(config, m_vcsbus).set_map(&a7800_state::vcs_bus_map).set_options(ENDIANNESS_LITTLE, 8, 13, 0x2000);
+	VCS_CART_SLOT(config, m_vcs_cart, vcs_cart, nullptr);
+	m_vcs_cart->set_address_space(m_vcsbus, AS_PROGRAM);
+	m_vcs_cart->set_image_names("cartridge2600", "cart2600");
 }
 
 void a7800_ntsc_state::a7800_ntsc(machine_config &config)
@@ -1585,7 +1792,9 @@ void a7800_ntsc_state::a7800_ntsc(machine_config &config)
 	// basic machine hardware
 	m_screen->set_raw(14'318'180/2, 454, 0, 320, 263, 27, 27 + 192 + 32);
 
-	m_cart->set_must_be_loaded(true);
+	TIA_NTSC_VIDEO(config, m_tia_video, "tia");
+	m_tia_video->read_input_port_callback().set(FUNC(a7800_ntsc_state::vcs_input_r));
+	m_tia_video->databus_contents_callback().set(FUNC(a7800_ntsc_state::vcs_databus_r));
 
 	// software lists
 	SOFTWARE_LIST(config, "cart_list").set_original("a7800").set_filter("NTSC");
@@ -1597,6 +1806,10 @@ void a7800_pal_state::a7800_pal(machine_config &config)
 
 	// basic machine hardware
 	m_screen->set_raw(14'187'576/2, 454, 0, 320, 313, 35, 35 + 228 + 32);
+
+	TIA_PAL_VIDEO(config, m_tia_video, "tia");
+	m_tia_video->read_input_port_callback().set(FUNC(a7800_pal_state::vcs_input_r));
+	m_tia_video->databus_contents_callback().set(FUNC(a7800_pal_state::vcs_databus_r));
 
 	// software lists
 	SOFTWARE_LIST(config, "cart_list").set_original("a7800").set_filter("PAL");
@@ -1633,6 +1846,7 @@ void a7800_ntsc_state::init_a7800_ntsc()
 {
 	m_ispal = false;
 	m_lines = 263;
+	m_clock = 14'318'180;
 	m_skip_bios = 3;  // system_bios() counts from 1
 	m_p1_one_button = true;
 	m_p2_one_button = true;
@@ -1643,6 +1857,7 @@ void a7800_pal_state::init_a7800_pal()
 {
 	m_ispal = true;
 	m_lines = 313;
+	m_clock = 14'187'576;
 	m_skip_bios = 2;
 	m_p1_one_button = true;
 	m_p2_one_button = true;
