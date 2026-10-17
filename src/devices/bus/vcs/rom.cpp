@@ -29,6 +29,7 @@ DEFINE_DEVICE_TYPE(A26_ROM_F8_SW, a26_rom_f8_sw_device, "vcs_f8_sw", "Atari VCS 
 DEFINE_DEVICE_TYPE(A26_ROM_EF,    a26_rom_ef_device,    "vcs_ef",    "Atari VCS 2600 ROM Carts w/EF bankswitch")
 DEFINE_DEVICE_TYPE(A26_ROM_DF,    a26_rom_df_device,    "vcs_df",    "Atari VCS 2600 ROM Carts w/DF bankswitch")
 DEFINE_DEVICE_TYPE(A26_ROM_BF,    a26_rom_bf_device,    "vcs_bf",    "Atari VCS 2600 ROM Carts w/BF bankswitch")
+DEFINE_DEVICE_TYPE(A26_ROM_SB,    a26_rom_sb_device,    "vcs_sb",    "Atari VCS 2600 ROM Carts w/SB (SUPERbanking) bankswitch")
 DEFINE_DEVICE_TYPE(A26_ROM_FA,    a26_rom_fa_device,    "vcs_fa",    "Atari VCS 2600 ROM Carts w/FA bankswitch")
 DEFINE_DEVICE_TYPE(A26_ROM_FA2,   a26_rom_fa2_device,   "vcs_fa2",   "Atari VCS 2600 ROM Carts w/FA2 bankswitch")
 DEFINE_DEVICE_TYPE(A26_ROM_FE,    a26_rom_fe_device,    "vcs_fe",    "Atari VCS 2600 ROM Carts w/FE bankswitch")
@@ -262,6 +263,43 @@ void a26_rom_ef_device::install_memory_handlers(address_space *space)
 void a26_rom_ef_device::switch_bank(offs_t offset, uint8_t data)
 {
 	m_bank->set_entry(offset % m_rom_banks);
+}
+
+
+
+/*-------------------------------------------------
+ "SB Bankswitch" (SUPERbanking) Carts:
+ 32 or 64 4K banks (128K or 256K), selected by
+ read/write access to 0x0800-0x0fff (A12 = 0, A11 =
+ 1): the low address bits give the bank, i.e.
+ 0x0800-0x081f or 0x0800-0x083f and their mirrors.
+ The board starts in its last bank.
+
+ GAMES: homebrew
+
+ -------------------------------------------------*/
+
+a26_rom_sb_device::a26_rom_sb_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+	: a26_rom_base_device(mconfig, A26_ROM_SB, tag, owner, clock)
+	, m_bank(*this, "bank")
+	, m_banks(1)
+{
+}
+
+void a26_rom_sb_device::device_reset()
+{
+	m_bank->set_entry(m_banks - 1);
+}
+
+void a26_rom_sb_device::install_memory_handlers(address_space *space)
+{
+	m_banks = std::clamp<uint32_t>(get_rom_size() / 0x1000, 1, 64);
+	m_bank->configure_entries(0, m_banks, get_rom_base(), 0x1000);
+
+	space->install_read_bank(0x1000, 0x1fff, m_bank);
+	space->install_readwrite_tap(0x0800, 0x0fff, "bank",
+			[this] (offs_t address, u8 &, u8) { if (!machine().side_effects_disabled()) m_bank->set_entry((address & 0x7f) % m_banks); },
+			[this] (offs_t address, u8 &, u8) { if (!machine().side_effects_disabled()) m_bank->set_entry((address & 0x7f) % m_banks); });
 }
 
 
