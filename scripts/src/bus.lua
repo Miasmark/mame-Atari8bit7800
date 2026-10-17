@@ -6047,6 +6047,8 @@ if BUSES["VCS"] then
 	files {
 		MAME_DIR .. "src/devices/bus/vcs/vcs_slot.cpp",
 		MAME_DIR .. "src/devices/bus/vcs/vcs_slot.h",
+		MAME_DIR .. "src/devices/bus/vcs/vcs_carts.cpp",
+		MAME_DIR .. "src/devices/bus/vcs/vcs_carts.h",
 		MAME_DIR .. "src/devices/bus/vcs/rom.cpp",
 		MAME_DIR .. "src/devices/bus/vcs/rom.h",
 		MAME_DIR .. "src/devices/bus/vcs/compumat.cpp",

@@ -27,6 +27,8 @@ public:
 	virtual ~vcs_cart_slot_device();
 
 	template <typename T> void set_address_space(T &&tag, int no) { m_address_space.set_tag(std::forward<T>(tag), no); }
+	// a machine with another cartridge slot too (the 7800) names this one apart
+	void set_image_names(const char *type, const char *brief) { m_image_type = type; m_image_brief = brief; }
 
 	// device_image_interface implementation
 	virtual std::pair<std::error_condition, std::string> call_load() override;
@@ -35,6 +37,8 @@ public:
 	virtual bool is_reset_on_load() const noexcept override { return true; }
 	virtual const char *image_interface() const noexcept override { return "a2600_cart"; }
 	virtual const char *file_extensions() const noexcept override { return "bin,a26"; }
+	virtual const char *image_type_name() const noexcept override { return m_image_type ? m_image_type : device_cartrom_image_interface::image_type_name(); }
+	virtual const char *image_brief_type_name() const noexcept override { return m_image_brief ? m_image_brief : device_cartrom_image_interface::image_brief_type_name(); }
 
 	// device_slot_interface implementation
 	virtual std::string get_default_card_software(get_default_card_software_hook &hook) const override;
@@ -50,6 +54,8 @@ private:
 	device_vcs_cart_interface *m_cart;
 	int m_type;
 	optional_address_space m_address_space;
+	const char *m_image_type = nullptr;
+	const char *m_image_brief = nullptr;
 
 	static bool detect_snowhite(const uint8_t *cart, uint32_t len);
 	static bool detect_modeDC(const uint8_t *cart, uint32_t len);
