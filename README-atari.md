@@ -32,6 +32,9 @@ change is its own commit with a description of what was measured.
 
 ## Atari 2600 (`a2600`, `a2600p`)
 
+- **Frame Blending setting** (Machine Configuration menu, on by default; also used by the 7800's
+  2600 mode). MAME blends each frame with the one before so flickering sprites look steady; turn it
+  off to see each frame as drawn, e.g. for a sprite that changes every frame.
 - **Harmony/Melody ARM cartridges: DPC+, CDF, CDFJ and CDFJ+.**
   - **How:** the game's own ARM code runs on MAME's ARM7; the Harmony driver's behaviour is
     implemented natively.
