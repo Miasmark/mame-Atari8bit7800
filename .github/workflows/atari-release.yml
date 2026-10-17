@@ -1,0 +1,158 @@
+name: Atari release builds
+
+# Atari-only builds (a2600, a7800 and the Atari 8-bit/5200 drivers) for
+# Windows x64, macOS (Apple silicon) and Linux x64 (AppImage). A tag named
+# atari-* makes a draft release with them; running the workflow by hand only
+# keeps them as workflow artifacts.
+
+on:
+  push:
+    tags:
+    - 'atari-*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  SOURCES: src/mame/atari/a7800.cpp,src/mame/atari/atari400.cpp,src/mame/atari/a2600.cpp
+  TOOLS: 0
+  STRIP_SYMBOLS: 1
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      name: ${{ steps.name.outputs.name }}
+      source: ${{ steps.name.outputs.source }}
+    steps:
+    - id: name
+      run: |
+        if [ "${GITHUB_REF_TYPE}" = tag ]; then name="${GITHUB_REF_NAME}"; else name="dev-${GITHUB_SHA::9}"; fi
+        echo "name=${name}" >> "$GITHUB_OUTPUT"
+        echo "source=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/tree/${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+
+  linux:
+    needs: version
+    # the oldest runner: the AppImage then runs on distributions from 2022 on
+    runs-on: ubuntu-22.04
+    steps:
+    - uses: actions/checkout@v4
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libsdl2-dev libsdl2-ttf-dev libfontconfig-dev libasound2-dev libpulse-dev libxinerama-dev libxi-dev
+    - name: Build
+      env:
+        USE_QTDEBUG: 0
+        LDOPTS: -static-libstdc++ -static-libgcc
+      run: make -j4
+    - name: Validate
+      run: ./mame -validate
+    - name: Package
+      env:
+        APPIMAGE_EXTRACT_AND_RUN: 1
+      run: |
+        name=mame-${{ needs.version.outputs.name }}-linux-x86_64
+        scripts/atari-release/stage.sh ./mame stage "${{ needs.version.outputs.name }}" "${{ needs.version.outputs.source }}"
+        curl -sSL -o linuxdeploy https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+        chmod +x linuxdeploy
+        scripts/atari-release/appimage.sh stage "${name}.AppImage" "$PWD/linuxdeploy"
+        ./"${name}.AppImage" -validate
+    - uses: actions/upload-artifact@v4
+      with:
+        name: linux
+        path: mame-*.AppImage
+        if-no-files-found: error
+
+  windows:
+    needs: version
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+    - uses: msys2/setup-msys2@e9898307ac31d1a803454791be09ab9973336e1c # v2.31.1
+      with:
+        msystem: UCRT64
+        install: git make zip mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-python mingw-w64-ucrt-x86_64-lld mingw-w64-ucrt-x86_64-llvm
+    - uses: actions/checkout@v4
+    - name: Build
+      env:
+        OVERRIDE_AR: llvm-ar
+        ARCHOPTS: -fuse-ld=lld
+      run: make -j4
+    - name: Validate
+      run: ./mame.exe -validate
+    - name: Package
+      run: |
+        name=mame-${{ needs.version.outputs.name }}-windows-x64
+        scripts/atari-release/stage.sh ./mame.exe "${name}" "${{ needs.version.outputs.name }}" "${{ needs.version.outputs.source }}"
+        # MinGW links statically: the executable should need nothing outside Windows
+        if ldd "${name}/mame.exe" | grep -iv '/c/windows/' | grep -i '=> /'; then echo 'unexpected DLLs'; exit 1; fi
+        for f in "${name}"/*.txt "${name}"/*.md; do sed -i 's/$/\r/' "$f"; done
+        zip -r "${name}.zip" "${name}"
+    - uses: actions/upload-artifact@v4
+      with:
+        name: windows
+        path: mame-*.zip
+        if-no-files-found: error
+
+  macos:
+    needs: version
+    runs-on: macos-14
+    env:
+      SDL_VERSION: 2.32.10
+    steps:
+    - uses: actions/checkout@v4
+    - name: SDL2 framework
+      run: |
+        curl -sSL -o SDL2.dmg "https://github.com/libsdl-org/SDL/releases/download/release-${SDL_VERSION}/SDL2-${SDL_VERSION}.dmg"
+        hdiutil attach -nobrowse -mountpoint /tmp/sdl2 SDL2.dmg
+        mkdir sdl && cp -R /tmp/sdl2/SDL2.framework sdl/
+        hdiutil detach /tmp/sdl2
+    - name: Build
+      run: make -j3 SDL_FRAMEWORK_PATH="$PWD/sdl/"
+    - name: Package
+      run: |
+        name=mame-${{ needs.version.outputs.name }}-macos-arm64
+        scripts/atari-release/stage.sh ./mame "${name}" "${{ needs.version.outputs.name }}" "${{ needs.version.outputs.source }}"
+        cp -R sdl/SDL2.framework "${name}/"
+        # look for SDL next to the executable, not where it was built
+        install_name_tool -delete_rpath "$PWD/sdl/" "${name}/mame" || install_name_tool -delete_rpath "$PWD/sdl" "${name}/mame"
+        install_name_tool -add_rpath @executable_path "${name}/mame"
+        # not signed by a developer: an ad hoc signature, which Apple silicon needs to run it at all
+        codesign --force --sign - "${name}/mame"
+        otool -L "${name}/mame" | grep -i sdl
+        "${name}/mame" -validate
+        ditto -c -k --keepParent "${name}" "${name}.zip"
+    - uses: actions/upload-artifact@v4
+      with:
+        name: macos
+        path: mame-*.zip
+        if-no-files-found: error
+
+  release:
+    needs: [version, linux, windows, macos]
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/download-artifact@v4
+      with:
+        path: dist
+        merge-multiple: true
+    - name: Draft release
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        cat > notes.md <<EOF
+        Unofficial MAME 0.289 with the Atari 2600/7800/8-bit patch set, Atari-only builds (see README-atari.md in each download).
+        Source: ${{ needs.version.outputs.source }}
+
+        - Windows x64: unzip and run mame.exe. Windows may warn that the program is unsigned (More info, Run anyway).
+        - macOS (Apple silicon): unzip, then the first time right-click mame and choose Open, or run xattr -dr com.apple.quarantine on the folder; the build is not signed by a developer.
+        - Linux x64: one AppImage that carries its libraries (README, licence and software lists inside); chmod +x it. Without FUSE, run it with --appimage-extract-and-run.
+
+        BIOS images are not included. The 7800 starts without one with -bios skip.
+        EOF
+        gh release create "${GITHUB_REF_NAME}" dist/* --draft --title "${GITHUB_REF_NAME}" --notes-file notes.md
