@@ -112,7 +112,7 @@ protected:
 	virtual void update_irq();
 	virtual uint8_t get_irq_flags();
 	uint8_t get_timer();
-	void timer_start(uint8_t data);
+	void timer_start(uint8_t data, bool restart);
 	TIMER_CALLBACK_MEMBER(timer_end);
 	void edge_detect();
 
@@ -169,6 +169,7 @@ protected:
 	uint8_t m_timerstate;
 	emu_timer *m_timer;
 	attotime m_timeout;
+	attotime m_prescale;            // the count's first step after the last write: the prescaler's phase
 	uint32_t m_timer_clock = 0;     // the clock the running count was made at
 };
 
