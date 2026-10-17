@@ -582,6 +582,7 @@ static void a2600_cart(device_slot_interface &device)
 	device.option_add("a26_ua",    A26_ROM_UA);
 	device.option_add("a26_uasw",  A26_ROM_UASW);
 	device.option_add("a26_0840",  A26_ROM_0840);
+	device.option_add("a26_0fa0",  A26_ROM_0FA0);
 	device.option_add("a26_cv",    A26_ROM_CV);
 	device.option_add("a26_dc",    A26_ROM_DC);
 	device.option_add("a26_fv",    A26_ROM_FV);

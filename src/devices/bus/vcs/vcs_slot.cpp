@@ -60,6 +60,7 @@ enum
 	A26_SB,
 	A26_UASW,
 	A26_0840,
+	A26_0FA0,
 };
 
 //-------------------------------------------------
@@ -193,6 +194,7 @@ static const vcs_slot slot_list[] =
 	{ A26_SB, "a26_sb" },
 	{ A26_UASW, "a26_uasw" },
 	{ A26_0840, "a26_0840" },
+	{ A26_0FA0, "a26_0fa0" },
 };
 
 static int vcs_get_pcb_id(const char *slot)
