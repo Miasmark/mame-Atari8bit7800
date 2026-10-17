@@ -79,6 +79,21 @@ change is its own commit with a description of what was measured.
 The Atari XG-1 light gun for the 2600 (Sentinel, Shooting Arcade) builds on light-pen support that
 MAME added after 0.289. It is on the development line, not here.
 
+## Downloads
+
+Atari-only builds (a2600, a7800, the Atari 8-bit computers and the 5200) are on the fork's
+Releases page, built by `.github/workflows/atari-release.yml`:
+
+- **Windows x64**: unzip and run `mame.exe` from that folder. Windows may warn that it is
+  unsigned: More info, Run anyway.
+- **macOS, Apple silicon (macOS 11 or later)**: unzip, then either right-click `mame` and choose
+  Open the first time, or run `xattr -dr com.apple.quarantine` on the folder. The build is not
+  signed by a developer.
+- **Linux x86-64**: one AppImage carrying its libraries (glibc 2.34 or later). `chmod +x` it and
+  run it; without FUSE, add `--appimage-extract-and-run`.
+
+BIOS images are not included; the 7800 starts without one with `-bios skip`.
+
 ## Building
 
     git clone --branch atari-0.289 https://github.com/Miasmark/mame-Atari8bit7800
