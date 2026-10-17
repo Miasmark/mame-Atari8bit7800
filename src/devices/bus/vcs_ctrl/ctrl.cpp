@@ -34,6 +34,19 @@ device_vcs_control_port_interface::device_vcs_control_port_interface(const machi
 }
 
 
+//-------------------------------------------------
+//  light_detected - whether a light sensor aimed
+//  at a crosshair (0-255 across the visible
+//  picture) sees light, as the driver's light
+//  sense callback says (no light without one)
+//-------------------------------------------------
+
+bool device_vcs_control_port_interface::light_detected(int x255, int y255) const
+{
+	return !m_port->m_light_sense_cb.isnull() && m_port->m_light_sense_cb(x255, y255);
+}
+
+
 
 //**************************************************************************
 //  LIVE DEVICE
@@ -45,7 +58,9 @@ device_vcs_control_port_interface::device_vcs_control_port_interface(const machi
 
 vcs_control_port_device::vcs_control_port_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock) :
 	device_t(mconfig, VCS_CONTROL_PORT, tag, owner, clock),
-	device_slot_interface(mconfig, *this), m_device(nullptr),
+	device_slot_interface(mconfig, *this),
+	m_light_sense_cb(*this),
+	m_device(nullptr),
 	m_write_trigger(*this)
 {
 }
@@ -57,6 +72,8 @@ vcs_control_port_device::vcs_control_port_device(const machine_config &mconfig, 
 
 void vcs_control_port_device::device_start()
 {
+	m_light_sense_cb.resolve();
+
 	m_device = dynamic_cast<device_vcs_control_port_interface *>(get_card_device());
 }
 
@@ -75,6 +92,7 @@ void vcs_control_port_device::device_start()
 #include "savekey.h"
 #include "trakball.h"
 #include "wheel.h"
+#include "xg1.h"
 
 void vcs_control_port_devices(device_slot_interface &device)
 {
@@ -82,6 +100,7 @@ void vcs_control_port_devices(device_slot_interface &device)
 	device.option_add("pad", VCS_PADDLES);
 	device.option_add("mouse", VCS_MOUSE);
 	device.option_add("lp", VCS_LIGHTPEN);
+	device.option_add("xg1", ATARI_XG1);
 	device.option_add("joybstr", VCS_JOYSTICK_BOOSTER);
 	device.option_add("wheel", VCS_WHEEL);
 	device.option_add("keypad", VCS_KEYPAD);

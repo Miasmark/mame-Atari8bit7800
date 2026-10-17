@@ -50,6 +50,10 @@ public:
 	uint8_t read(offs_t offset);
 	void write(offs_t offset, uint8_t data);
 
+	// light gun/pen support: true while a light sensor aimed at (x, y) of the screen bitmap
+	// sees the beam (or the glow it just left) drawing a bright part of the picture
+	bool light_sensor(int x, int y);
+
 	// the Palette setting (atari_tuccitto::WARM ... ORIGINAL), which the 7800 follows too
 	u8 palette_choice() const;
 

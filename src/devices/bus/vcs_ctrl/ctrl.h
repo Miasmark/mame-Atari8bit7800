@@ -43,6 +43,10 @@ public:
 protected:
 	device_vcs_control_port_interface(const machine_config &mconfig, device_t &device);
 
+	// true if a light sensor aimed at a crosshair (0-255 across the visible picture) sees
+	// light: the driver tells (vcs_control_port_device::set_light_sense_callback)
+	bool light_detected(int x255, int y255) const;
+
 	vcs_control_port_device *m_port;
 };
 
@@ -62,8 +66,18 @@ public:
 	}
 	vcs_control_port_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock = 0);
 
+	// device_delegate telling whether a light sensor aimed at a crosshair (0-255 across the
+	// visible picture) sees light right now; for video chips whose raster and picture the
+	// screen device doesn't follow (the 2600's TIA starts a frame on the game's VSYNC),
+	// light_detected() asks it
+	using light_sense_delegate = device_delegate<bool (int, int)>;
+
 	// static configuration helpers
 	auto trigger_wr_callback() { return m_write_trigger.bind(); }
+	template <typename... T> void set_light_sense_callback(T &&... args) { m_light_sense_cb.set(std::forward<T>(args)...); }
+
+	// for light guns
+	light_sense_delegate m_light_sense_cb;
 
 	// computer interface
 

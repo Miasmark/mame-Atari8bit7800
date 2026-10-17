@@ -694,6 +694,42 @@ int tia_video_device::collision_check(uint8_t* p1, uint8_t* p2, int x1, int x2)
 }
 
 
+//-------------------------------------------------
+//  light_sensor - a photodiode aimed at (x, y) of
+//  the screen bitmap sees light while the beam is
+//  close to that spot and draws something bright
+//  there, and for a short while after it moved on
+//  (phosphor glow and the sensor's own response)
+//-------------------------------------------------
+
+bool tia_video_device::light_sensor(int x, int y)
+{
+	// how far from its aim the sensor sees (lines and colour clocks), how long the light lasts
+	// after the beam has passed (colour clocks), and the luminance (0-7) it needs
+	constexpr int SENSOR_LINES = 1;
+	constexpr int SENSOR_WIDTH = 6;
+	constexpr int SENSOR_GLOW = 9;
+	constexpr int SENSOR_LUMA = 6;
+
+	int const beam_y = current_y();
+	if (beam_y < y - SENSOR_LINES || beam_y > y + SENSOR_LINES || beam_y >= screen_height)
+		return false;
+
+	// the picture is drawn at 34 in the bitmap; bring it up to the beam
+	int const beam_x = current_x() + 34;
+	if (!machine().side_effects_disabled())
+		update_bitmap(current_x(), beam_y);
+
+	uint16_t const *const line = &helper[current_bitmap].pix(beam_y);
+	for (int i = std::max({ beam_x - SENSOR_GLOW, x - SENSOR_WIDTH, 34 }); i <= std::min({ beam_x, x + SENSOR_WIDTH, 34 + 159 }); i++)
+	{
+		if ((line[i] & 0x07) >= SENSOR_LUMA)
+			return true;
+	}
+	return false;
+}
+
+
 int tia_video_device::current_x()
 {
 	return 3 * ((m_maincpu->total_cycles() - frame_cycles) % 76) - 68;
