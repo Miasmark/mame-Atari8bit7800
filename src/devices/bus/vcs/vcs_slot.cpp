@@ -62,6 +62,7 @@ enum
 	A26_0840,
 	A26_0FA0,
 	A26_03E0,
+	A26_3EP,
 };
 
 //-------------------------------------------------
@@ -197,6 +198,7 @@ static const vcs_slot slot_list[] =
 	{ A26_0840, "a26_0840" },
 	{ A26_0FA0, "a26_0fa0" },
 	{ A26_03E0, "a26_03e0" },
+	{ A26_3EP, "a26_3ep" },
 };
 
 static int vcs_get_pcb_id(const char *slot)
@@ -227,32 +229,12 @@ std::pair<std::error_condition, std::string> vcs_cart_slot_device::call_load()
 	{
 		const uint32_t len = loaded_through_softlist() ? get_software_region_length("rom") : length();
 
-		// check that filesize is among the supported ones
-		switch (len)
-		{
-			case 0x00800:
-			case 0x01000:
-			case 0x02000:
-			case 0x028ff:
-			case 0x02900:
-			case 0x03000:
-			case 0x04000:
-			case 0x06000:
-			case 0x07000:
-			case 0x07400:
-			case 0x08000:
-			case 0x10000:
-			case 0x20000:
-			case 0x40000:
-			case 0x80000:
-				break;
-
-			default:
-				// Supercharger tape images: one 8448 byte record for each load
-				if (!loaded_through_softlist() && is_ss_tape_size(len))
-					break;
-				return std::make_pair(image_error::INVALIDLENGTH, "Unsupported cartridge ROM file size");
-		}
+		// check that filesize is among the supported ones: besides the usual sizes, files can
+		// be Supercharger tape images (8448 bytes for each load), and the 3E/3F/3E+ boards
+		// take any number of 1K or 2K banks
+		bool const usual_size = is_usual_size(len);
+		if (!usual_size && (loaded_through_softlist() || (!is_ss_tape_size(len) && !is_any_banks_size(len))))
+			return std::make_pair(image_error::INVALIDLENGTH, "Unsupported cartridge ROM file size");
 
 		m_cart->rom_alloc(len, tag());
 		uint8_t *const ROM = m_cart->get_rom_base();
@@ -285,6 +267,8 @@ std::pair<std::error_condition, std::string> vcs_cart_slot_device::call_load()
 			// the board is the slot option picked by get_default_card_software(), unless
 			// one was given on the command line: allocate the RAM that one needs
 			m_type = vcs_get_pcb_id(m_cart->device().basetag());
+			if (!usual_size && m_type != A26_SS && m_type != A26_3E && m_type != A26_3F && m_type != A26_3EP)
+				return std::make_pair(image_error::INVALIDLENGTH, "Unsupported cartridge ROM file size");
 
 			// check for Super Chip (128bytes of RAM)
 			if (len == 0x2000 || len == 0x4000 || len == 0x8000 || m_type == A26_EF || m_type == A26_DF || m_type == A26_BF)
@@ -305,8 +289,8 @@ std::pair<std::error_condition, std::string> vcs_cart_slot_device::call_load()
 			// add Starpath Superchager RAM
 			else if (m_type == A26_SS)
 				m_cart->ram_alloc(0x1800);
-			// add Boulder Dash RAM
-			else if (m_type == A26_3E)
+			// add Boulder Dash RAM, 3E+ RAM
+			else if (m_type == A26_3E || m_type == A26_3EP)
 				m_cart->ram_alloc(0x8000);
 		}
 
@@ -447,6 +431,81 @@ bool vcs_cart_slot_device::detect_modeSS(const uint8_t *cart, uint32_t len)
 	if (numfound)
 		return 1;
 	return 0;
+}
+
+bool vcs_cart_slot_device::is_usual_size(uint32_t len)
+{
+	switch (len)
+	{
+		case 0x00800:
+		case 0x01000:
+		case 0x02000:
+		case 0x028ff:
+		case 0x02900:
+		case 0x03000:
+		case 0x04000:
+		case 0x06000:
+		case 0x07000:
+		case 0x07400:
+		case 0x08000:
+		case 0x10000:
+		case 0x20000:
+		case 0x40000:
+		case 0x80000:
+			return true;
+
+		default:
+			return false;
+	}
+}
+
+bool vcs_cart_slot_device::is_any_banks_size(uint32_t len)
+{
+	return len && !(len % 0x400) && len <= 0x80000;
+}
+
+int vcs_cart_slot_device::count_zp_stores(const uint8_t *cart, uint32_t len, uint8_t address)
+{
+	// STA, STX, STY zero page
+	int found = 0;
+	for (uint32_t i = 0; i + 1 < len; i++)
+		if ((cart[i] == 0x85 || cart[i] == 0x86 || cart[i] == 0x84) && cart[i + 1] == address)
+			found++;
+	return found;
+}
+
+bool vcs_cart_slot_device::detect_mode3EP(const uint8_t *cart, uint32_t len)
+{
+	// up to 64K of 1K banks
+	if (len < 0x800 || len > 0x10000)
+		return 0;
+
+	// 3E+ images are meant to carry a "TJ3E" marker
+	static const char marker[] = { 'T', 'J', '3', 'E' };
+	if (std::search(cart, cart + len, std::begin(marker), std::end(marker)) != cart + len)
+		return 1;
+
+	// otherwise: the reset vector is at the end of the first 1K, pointing to the last segment
+	// (where that bank starts), and banks are put into segments other than the first
+	// (LDA #$40-$FF / STA $3E or $3F), which 3E and 3F bank numbers (up to 64K) never need
+	uint16_t const reset = (cart[0x3fd] << 8) | cart[0x3fc];
+	int segments = 0;
+	for (uint32_t i = 0; i + 3 < len; i++)
+		if (cart[i] == 0xa9 && cart[i + 1] >= 0x40 && cart[i + 2] == 0x85 && (cart[i + 3] == 0x3e || cart[i + 3] == 0x3f))
+			segments++;
+	return ((reset & 0x1c00) == 0x1c00) && segments >= 2;
+}
+
+bool vcs_cart_slot_device::detect_any_3E(const uint8_t *cart, uint32_t len)
+{
+	// RAM and ROM banks are both selected
+	return len >= 0x2000 && count_zp_stores(cart, len, 0x3e) >= 2 && count_zp_stores(cart, len, 0x3f) >= 1;
+}
+
+bool vcs_cart_slot_device::detect_any_3F(const uint8_t *cart, uint32_t len)
+{
+	// ROM banks are selected, RAM ones are not
+	return len >= 0x2000 && count_zp_stores(cart, len, 0x3f) >= 3 && !count_zp_stores(cart, len, 0x3e);
 }
 
 bool vcs_cart_slot_device::is_ss_tape_size(uint32_t len)
@@ -877,9 +936,15 @@ int vcs_cart_slot_device::identify_cart_type(const uint8_t *ROM, uint32_t len)
 		type = A26_UA;
 	else if (detect_mode0840(ROM, len))
 		type = A26_0840;
+	else if (detect_mode3EP(ROM, len))
+		type = A26_3EP;
+	else if (detect_any_3E(ROM, len))
+		type = A26_3E;
 	else if (detect_8K_mode3F(ROM, len))
 		type = A26_3F;
 	else if (detect_32K_mode3F(ROM, len))
+		type = A26_3F;
+	else if (detect_any_3F(ROM, len))
 		type = A26_3F;
 	else if (detect_modeE7(ROM, len))
 		type = A26_E7;

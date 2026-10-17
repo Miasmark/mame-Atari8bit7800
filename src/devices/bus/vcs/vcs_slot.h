@@ -59,6 +59,12 @@ private:
 	static bool detect_mode3E(const uint8_t *cart, uint32_t len);
 	static bool detect_modeSS(const uint8_t *cart, uint32_t len);
 	static bool is_ss_tape_size(uint32_t len);
+	static bool is_usual_size(uint32_t len);
+	static bool is_any_banks_size(uint32_t len);
+	static int count_zp_stores(const uint8_t *cart, uint32_t len, uint8_t address);
+	static bool detect_mode3EP(const uint8_t *cart, uint32_t len);
+	static bool detect_any_3E(const uint8_t *cart, uint32_t len);
+	static bool detect_any_3F(const uint8_t *cart, uint32_t len);
 	static bool detect_ss_tape(const uint8_t *cart, uint32_t len);
 	static bool detect_modeFE(const uint8_t *cart, uint32_t len);
 	static bool detect_modeE0(const uint8_t *cart, uint32_t len);
