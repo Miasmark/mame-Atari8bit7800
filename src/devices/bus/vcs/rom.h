@@ -98,6 +98,48 @@ protected:
 };
 
 
+// ======================> a26_rom_ef_device
+
+class a26_rom_ef_device : public a26_rom_f6_device
+{
+public:
+	a26_rom_ef_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
+
+	virtual void install_memory_handlers(address_space *space) override;
+
+protected:
+	a26_rom_ef_device(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, uint32_t clock, offs_t hotspot, uint8_t banks, uint8_t start_bank, uint8_t start_bank_sc);
+
+	virtual uint8_t get_start_bank() override;
+	void switch_bank(offs_t offset, uint8_t data);
+
+private:
+	offs_t const m_hotspot;
+	uint8_t const m_banks;
+	uint8_t const m_start_bank;
+	uint8_t const m_start_bank_sc;
+	uint8_t m_rom_banks;
+};
+
+
+// ======================> a26_rom_df_device
+
+class a26_rom_df_device : public a26_rom_ef_device
+{
+public:
+	a26_rom_df_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
+};
+
+
+// ======================> a26_rom_bf_device
+
+class a26_rom_bf_device : public a26_rom_ef_device
+{
+public:
+	a26_rom_bf_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
+};
+
+
 // ======================> a26_rom_fa_device
 
 class a26_rom_fa_device : public a26_rom_f6_device
@@ -390,6 +432,9 @@ DECLARE_DEVICE_TYPE(A26_ROM_F4,    a26_rom_f4_device)
 DECLARE_DEVICE_TYPE(A26_ROM_F6,    a26_rom_f6_device)
 DECLARE_DEVICE_TYPE(A26_ROM_F8,    a26_rom_f8_device)
 DECLARE_DEVICE_TYPE(A26_ROM_F8_SW, a26_rom_f8_sw_device)
+DECLARE_DEVICE_TYPE(A26_ROM_EF,    a26_rom_ef_device)
+DECLARE_DEVICE_TYPE(A26_ROM_DF,    a26_rom_df_device)
+DECLARE_DEVICE_TYPE(A26_ROM_BF,    a26_rom_bf_device)
 DECLARE_DEVICE_TYPE(A26_ROM_FA,    a26_rom_fa_device)
 DECLARE_DEVICE_TYPE(A26_ROM_FA2,   a26_rom_fa2_device)
 DECLARE_DEVICE_TYPE(A26_ROM_FE,    a26_rom_fe_device)
