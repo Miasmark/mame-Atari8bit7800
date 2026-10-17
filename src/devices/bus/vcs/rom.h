@@ -157,6 +157,26 @@ protected:
 };
 
 
+// ======================> a26_rom_mdm_device
+
+class a26_rom_mdm_device : public a26_rom_base_device
+{
+public:
+	a26_rom_mdm_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
+
+	virtual void install_memory_handlers(address_space *space) override;
+
+protected:
+	virtual void device_start() override ATTR_COLD;
+	virtual void device_reset() override ATTR_COLD;
+	void switch_bank(offs_t address);
+
+	memory_bank_creator m_bank;
+	uint8_t m_banks;
+	bool m_locked;
+};
+
+
 // ======================> a26_rom_fa_device
 
 class a26_rom_fa_device : public a26_rom_f6_device
@@ -536,6 +556,7 @@ DECLARE_DEVICE_TYPE(A26_ROM_EF,    a26_rom_ef_device)
 DECLARE_DEVICE_TYPE(A26_ROM_DF,    a26_rom_df_device)
 DECLARE_DEVICE_TYPE(A26_ROM_BF,    a26_rom_bf_device)
 DECLARE_DEVICE_TYPE(A26_ROM_SB,    a26_rom_sb_device)
+DECLARE_DEVICE_TYPE(A26_ROM_MDM,   a26_rom_mdm_device)
 DECLARE_DEVICE_TYPE(A26_ROM_FA,    a26_rom_fa_device)
 DECLARE_DEVICE_TYPE(A26_ROM_FA2,   a26_rom_fa2_device)
 DECLARE_DEVICE_TYPE(A26_ROM_FE,    a26_rom_fe_device)

@@ -63,6 +63,7 @@ enum
 	A26_0FA0,
 	A26_03E0,
 	A26_3EP,
+	A26_MDM,
 };
 
 //-------------------------------------------------
@@ -199,6 +200,7 @@ static const vcs_slot slot_list[] =
 	{ A26_0FA0, "a26_0fa0" },
 	{ A26_03E0, "a26_03e0" },
 	{ A26_3EP, "a26_3ep" },
+	{ A26_MDM, "a26_mdm" },
 };
 
 static int vcs_get_pcb_id(const char *slot)
@@ -230,8 +232,8 @@ std::pair<std::error_condition, std::string> vcs_cart_slot_device::call_load()
 		const uint32_t len = loaded_through_softlist() ? get_software_region_length("rom") : length();
 
 		// check that filesize is among the supported ones: besides the usual sizes, files can
-		// be Supercharger tape images (8448 bytes for each load), and the 3E/3F/3E+ boards
-		// take any number of 1K or 2K banks
+		// be Supercharger tape images (8448 bytes for each load), and the 3E/3F/3E+ and MDM
+		// boards take any number of banks
 		bool const usual_size = is_usual_size(len);
 		if (!usual_size && (loaded_through_softlist() || (!is_ss_tape_size(len) && !is_any_banks_size(len))))
 			return std::make_pair(image_error::INVALIDLENGTH, "Unsupported cartridge ROM file size");
@@ -267,7 +269,7 @@ std::pair<std::error_condition, std::string> vcs_cart_slot_device::call_load()
 			// the board is the slot option picked by get_default_card_software(), unless
 			// one was given on the command line: allocate the RAM that one needs
 			m_type = vcs_get_pcb_id(m_cart->device().basetag());
-			if (!usual_size && m_type != A26_SS && m_type != A26_3E && m_type != A26_3F && m_type != A26_3EP)
+			if (!usual_size && m_type != A26_SS && m_type != A26_3E && m_type != A26_3F && m_type != A26_3EP && m_type != A26_MDM)
 				return std::make_pair(image_error::INVALIDLENGTH, "Unsupported cartridge ROM file size");
 
 			// check for Super Chip (128bytes of RAM)
