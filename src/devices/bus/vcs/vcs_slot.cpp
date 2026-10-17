@@ -17,6 +17,9 @@
 #include "emu.h"
 #include "vcs_slot.h"
 
+#include <algorithm>
+#include <string_view>
+
 //**************************************************************************
 //  GLOBAL VARIABLES
 //**************************************************************************
@@ -217,8 +220,11 @@ std::pair<std::error_condition, std::string> vcs_cart_slot_device::call_load()
 			case 0x02900:
 			case 0x03000:
 			case 0x04000:
+			case 0x07000:
 			case 0x08000:
 			case 0x10000:
+			case 0x20000:
+			case 0x40000:
 			case 0x80000:
 				break;
 
@@ -685,6 +691,41 @@ bool vcs_cart_slot_device::detect_super_chip(const uint8_t *cart, uint32_t len)
 }
 
 
+// ARM based Harmony/Melody formats: the driver at the start of the image names the format
+bool vcs_cart_slot_device::detect_harmony(const uint8_t *cart, uint32_t len)
+{
+	auto const contains = [cart, len] (uint32_t end, std::string_view signature)
+	{
+		end = std::min(end, len);
+		auto const same = [] (uint8_t a, char b) { return a == uint8_t(b); };
+		return std::search(cart, cart + end, signature.begin(), signature.end(), same) != cart + end;
+	};
+
+	// DPC+: 3K driver, 24K of banks, 4K of display data and 1K of frequencies
+	if (len == 0x8000 && contains(0xc00, "DPC+"))
+		return true;
+
+	// FA2: seven banks, alone or after the 1K driver
+	static const uint8_t fa2_banks[] = { 0x00, 0xf4, 0xff, 0xff, 0x00, 0x04, 0x00, 0x00, 0x00, 0x14, 0x00, 0x00 };
+	if (len == 0x7000 || (len == 0x8000 && contains(0x400, std::string_view(reinterpret_cast<const char *>(fa2_banks), sizeof(fa2_banks)))))
+		return true;
+
+	// CDFJ+: up to 512K
+	if (len >= 0x8000 && contains(0x800, "PLUSCDFJ"))
+		return true;
+
+	// CDF and CDFJ: "CDF" and the version, three times, in the 2K driver
+	if (len == 0x8000)
+	{
+		for (uint32_t i = 0; i + 12 <= 0x800; i++)
+			if (!memcmp(&cart[i], "CDF", 3) && !memcmp(&cart[i], &cart[i + 4], 4) && !memcmp(&cart[i], &cart[i + 8], 4))
+				return true;
+	}
+
+	return false;
+}
+
+
 /*-------------------------------------------------
  identify_cart_type - code to detect cart type from
  fullpath
@@ -696,7 +737,9 @@ int vcs_cart_slot_device::identify_cart_type(const uint8_t *ROM, uint32_t len)
 	int type = 0xff;
 
 	// auto-detect bank mode
-	if (detect_modeDC(ROM, len))
+	if (detect_harmony(ROM, len))
+		type = A26_HARMONY;
+	else if (detect_modeDC(ROM, len))
 		type = A26_DC;
 	else if (detect_mode3E(ROM, len))
 		type = A26_3E;

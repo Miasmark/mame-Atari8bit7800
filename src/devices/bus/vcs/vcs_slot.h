@@ -72,6 +72,7 @@ private:
 	static bool detect_8K_mode3F(const uint8_t *cart, uint32_t len);
 	static bool detect_32K_mode3F(const uint8_t *cart, uint32_t len);
 	static bool detect_super_chip(const uint8_t *cart, uint32_t len);
+	static bool detect_harmony(const uint8_t *cart, uint32_t len);
 
 	friend class device_vcs_cart_interface;
 };
