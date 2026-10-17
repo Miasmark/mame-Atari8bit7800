@@ -223,6 +223,9 @@ std::pair<std::error_condition, std::string> vcs_cart_slot_device::call_load()
 				break;
 
 			default:
+				// Supercharger tape images: one 8448 byte record for each load
+				if (!loaded_through_softlist() && is_ss_tape_size(len))
+					break;
 				return std::make_pair(image_error::INVALIDLENGTH, "Unsupported cartridge ROM file size");
 		}
 
@@ -418,6 +421,28 @@ bool vcs_cart_slot_device::detect_modeSS(const uint8_t *cart, uint32_t len)
 	if (numfound)
 		return 1;
 	return 0;
+}
+
+bool vcs_cart_slot_device::is_ss_tape_size(uint32_t len)
+{
+	return len && !(len % 0x2100) && (len / 0x2100) <= 0x40;
+}
+
+bool vcs_cart_slot_device::detect_ss_tape(const uint8_t *cart, uint32_t len)
+{
+	// each load's 8 byte header (at 0x2000 in its record) sums up to 0x55
+	if (!is_ss_tape_size(len))
+		return 0;
+
+	for (uint32_t load = 0; load < len; load += 0x2100)
+	{
+		uint8_t sum = 0;
+		for (int i = 0; i < 8; i++)
+			sum += cart[load + 0x2000 + i];
+		if (sum != 0x55)
+			return 0;
+	}
+	return 1;
 }
 
 bool vcs_cart_slot_device::detect_modeFE(const uint8_t *cart, uint32_t len)
@@ -692,7 +717,9 @@ int vcs_cart_slot_device::identify_cart_type(const uint8_t *ROM, uint32_t len)
 	int type = 0xff;
 
 	// auto-detect bank mode
-	if (detect_modeDC(ROM, len))
+	if (detect_ss_tape(ROM, len))
+		type = A26_SS;
+	else if (detect_modeDC(ROM, len))
 		type = A26_DC;
 	else if (detect_mode3E(ROM, len))
 		type = A26_3E;
