@@ -2,11 +2,13 @@ name: Atari release builds
 
 # Atari-only builds (a2600, a7800 and the Atari 8-bit/5200 drivers) for
 # Windows x64, macOS (Apple silicon) and Linux x64 (AppImage). A tag named
-# atari-* makes a draft release with them; running the workflow by hand only
-# keeps them as workflow artifacts.
+# atari-* makes a draft release with them; a push to the branch, or running
+# the workflow by hand, only keeps them as workflow artifacts.
 
 on:
   push:
+    branches:
+    - atari-0.289
     tags:
     - 'atari-*'
   workflow_dispatch:
