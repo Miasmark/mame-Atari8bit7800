@@ -94,6 +94,53 @@ timer 0 as set up by the driver, 70 MHz / 3501); the top five bits pick a
 sample from a 32 byte waveform in the display data, and the amplitude
 register gives the sum of the three samples.
 
+
+CDF, CDFJ and CDFJ+
+-------------------
+
+The CDF family (Chris Walton, Darrell Spice Jr, Fred Quimby) replaces the
+DPC+ registers with data streams read through fast fetch only.  The image
+starts with a 2K driver, carrying "CDF" and a version byte three times
+("CDFJ" for CDFJ, "PLUSCDFJ" for CDFJ+), and the game's ARM code starts at
+$0800.  The 6507 sees seven 4K banks: for CDF and CDFJ they are at $1000-
+$7FFF, selected with $1FF5-$1FFB (bank 6, also selected by $1FF4, at power
+up); for CDFJ+ they are at $0800-$77FF, selected with $1FF4-$1FFA (bank 0,
+also selected by $1FFB, at power up), and a CDFJ+ image can be up to 512K,
+for the LPC2148 of the Harmony Encore and Melody+ with 32K of RAM.
+
+    6507 registers
+    $1FF0 DSWRITE: writes to the communication stream (stream 32)
+    $1FF1 DSPTR: shifts a byte into the communication stream pointer
+    $1FF2 SETMODE: bits 0-3 = 0 for fast fetch, bits 4-7 = 0 for sampled
+          audio instead of the three voices
+    $1FF3 CALLFN: runs the game's ARM code ($FE with interrupts enabled)
+
+With fast fetch on, LDA # (CDFJ+: also LDX # and LDY #, and the operand can
+be offset) with an operand below the number of streams reads the next byte
+of that stream; the operand after the last stream reads the amplitude.  A
+JMP $0000 (CDFJ, CDFJ+: also JMP $0001) takes its address from a jump
+stream.  Stream pointers and increments are tables in the driver RAM, which
+the game's ARM code sets up: pointers are 12.20 fixed point (CDFJ+: 16.16)
+offsets into the display data at $40000800, increments 8.8 (CDFJ+: 16.8).
+
+    CDF:   34 streams at $400000A0 (33 is the jump stream), amplitude 34
+    CDFJ:  35 streams at $40000098 (33 and 34 are jump streams), amplitude 35
+    CDFJ+: like CDFJ with 16.16 pointers
+
+The music is as on DPC+, but the game's ARM code drives it by calling
+routines in the driver (the table at $07E8 in the image): those are run as
+they are on the ARM7 core, which is why the voices are kept in the FIQ
+registers.  One of them patches the driver's amplitude code to change the
+size of a waveform; the amplitude is computed with the shift found there.
+Some revisions give the amplitude computed on the previous read; the driver
+code is looked at to find out, and also for the fast fetch opcodes and
+operand offset of CDFJ+ and for the bank table.
+
+The driver steps the voices when it sees timer 0 move while the 6507 is off
+the cartridge bus, so it can lag a fast timer: Mappy's driver sets the timer
+to 93 kHz, but its notes are written for 20 kHz like the other games', and
+the voices are always stepped at 20 kHz here.
+
 ***************************************************************************/
 
 
@@ -124,6 +171,9 @@ constexpr u32 ARM_CLOCK = 70'000'000;
 // LPC2103 has 8K, LPC2148 32K
 constexpr u32 ARM_RAM_MAX = 0x8000;
 
+// rate the music voices are stepped at (timer 0 of the driver)
+constexpr u32 MUSIC_CLOCK = 20'000;
+
 // budget for one call of the game's ARM code: about a frame's worth
 constexpr int ARM_CALL_BUDGET = ARM_CLOCK / 50;
 
@@ -139,6 +189,10 @@ constexpr u32 DPCP_FUNCTION = 0x32d;
 constexpr u32 DPCP_PARAMETERS = 0x330;
 constexpr u32 DPCP_DISPLAY = 0xc00;
 constexpr u32 DPCP_FREQUENCY = 0x1c00;
+
+constexpr u32 CDF_DISPLAY = 0x800;
+constexpr u8 CDF_COMM_STREAM = 0x20;
+constexpr u8 CDF_JUMP_STREAM = 0x21;
 
 constexpr u32 DPCP_RANDOM_RESET = 0x2b43'5044; // "DPC+"
 constexpr u32 DPCP_RANDOM_TAP = 0x10ad'ab1e;
@@ -216,13 +270,32 @@ a26_rom_harmony_device::a26_rom_harmony_device(const machine_config &mconfig, co
 	, m_arm_ram_size(0)
 	, m_format(FORMAT_NONE)
 	, m_old_driver(false)
-	, m_music_clock(20'000)
+	, m_cdf_streams(0)
+	, m_cdf_amplitude(0)
+	, m_cdf_jumps(0)
+	, m_cdf_shift(20)
+	, m_cdf_waveforms(0)
+	, m_cdf_latch(-1)
+	, m_cdf_digital(false)
+	, m_cdf_digital_shift(21)
+	, m_cdf_ff_opcodes{ 0xa9, 0xa9, 0xa9 }
+	, m_cdf_ff_offset(0)
+	, m_cdf_banks{ }
+	, m_cdf_entry(0)
+	, m_cdf_stack(0)
+	, m_mode(0xff)
+	, m_timer1_control(0)
+	, m_timer1_prescale(0)
+	, m_timer1_count(0)
+	, m_timer1_base(0)
 	, m_bank_offset(0)
 	, m_fast_fetch(0xff)
 	, m_music_ticks(0)
 	, m_ff_cycle(0)
 	, m_ff_offset(0)
 	, m_ff_pending(false)
+	, m_ff_stream(0)
+	, m_ff_remaining(0)
 {
 }
 
@@ -244,6 +317,13 @@ void a26_rom_harmony_device::device_start()
 	save_item(NAME(m_ff_cycle));
 	save_item(NAME(m_ff_offset));
 	save_item(NAME(m_ff_pending));
+	save_item(NAME(m_ff_stream));
+	save_item(NAME(m_ff_remaining));
+	save_item(NAME(m_mode));
+	save_item(NAME(m_timer1_control));
+	save_item(NAME(m_timer1_prescale));
+	save_item(NAME(m_timer1_count));
+	save_item(NAME(m_timer1_base));
 }
 
 void a26_rom_harmony_device::install_memory_handlers(address_space *space)
@@ -262,6 +342,24 @@ void a26_rom_harmony_device::install_memory_handlers(address_space *space)
 		// the older driver has the same handler for $5B and $5C in its jump table
 		m_old_driver = rom_r32(0x994 + 0x5b * 4) == rom_r32(0x994 + 0x5c * 4);
 	}
+	else if (find_string(0, 0x800, "PLUSCDFJ"))
+	{
+		m_format = FORMAT_CDFJP;
+		m_flash_size = std::min<u32>(m_rom_size, 0x8'0000);
+		m_arm_ram_size = 0x8000;
+	}
+	else if (find_string(0, 0x800, "CDFJCDFJCDFJ"))
+	{
+		m_format = FORMAT_CDFJ;
+		m_flash_size = 0x8000;
+		m_arm_ram_size = 0x2000;
+	}
+	else if (find_string(0, 0x800, "CDF"))
+	{
+		m_format = FORMAT_CDF;
+		m_flash_size = 0x8000;
+		m_arm_ram_size = 0x2000;
+	}
 	else
 	{
 		logerror("Unknown Harmony/Melody format\n");
@@ -269,6 +367,9 @@ void a26_rom_harmony_device::install_memory_handlers(address_space *space)
 		m_flash_size = 0x8000;
 		m_arm_ram_size = 0x2000;
 	}
+
+	if (m_format == FORMAT_CDF || m_format == FORMAT_CDFJ || m_format == FORMAT_CDFJP)
+		cdf_setup();
 
 	// the ARM sees the image as its flash, kept in 32 bit words
 	m_flash = std::make_unique<u32 []>(m_flash_size / 4);
@@ -278,6 +379,7 @@ void a26_rom_harmony_device::install_memory_handlers(address_space *space)
 	address_space &arm = m_arm->space(AS_PROGRAM);
 	arm.install_rom(0, m_flash_size - 1, m_flash.get());
 	arm.install_ram(0x4000'0000, 0x4000'0000 + m_arm_ram_size - 1, m_arm_ram.get());
+	arm.install_readwrite_handler(0xe000'8000, 0xe000'807f, read32sm_delegate(*this, FUNC(a26_rom_harmony_device::timer1_r)), write32sm_delegate(*this, FUNC(a26_rom_harmony_device::timer1_w)));
 	arm.install_read_handler(a26_harmony_arm_device::RETURN_ADDRESS, a26_harmony_arm_device::RETURN_ADDRESS + 0xf, read32sm_delegate(*this, FUNC(a26_rom_harmony_device::return_r)));
 }
 
@@ -288,8 +390,13 @@ void a26_rom_harmony_device::device_reset()
 
 	std::fill_n(&m_arm_ram[0], ARM_RAM_MAX / 4, 0);
 	m_fast_fetch = 0xff;
+	m_mode = 0xff;
+	m_timer1_control = 0;
+	m_timer1_prescale = 0;
+	m_timer1_count = 0;
+	m_timer1_base = 0;
 	m_ff_pending = false;
-	m_music_ticks = machine().time().as_ticks(m_music_clock);
+	m_music_ticks = machine().time().as_ticks(MUSIC_CLOCK);
 
 	switch (m_format)
 	{
@@ -300,6 +407,15 @@ void a26_rom_harmony_device::device_reset()
 		for (u32 i = DPCP_DISPLAY; i < 0x2000; i += 4)
 			ram_w32(i, rom_r32(i + 0x6000));
 		m_bank_offset = 0xc00 + 5 * 0x1000;
+		break;
+
+	case FORMAT_CDF:
+	case FORMAT_CDFJ:
+	case FORMAT_CDFJP:
+		// the driver copies itself to RAM (CDFJ+ only from $400)
+		for (u32 i = (m_format == FORMAT_CDFJP) ? 0x400 : 0; i < 0x800; i += 4)
+			ram_w32(i, rom_r32(i));
+		m_bank_offset = m_cdf_banks[0];
 		break;
 
 	default:
@@ -343,6 +459,58 @@ bool a26_rom_harmony_device::find_string(u32 start, u32 end, std::string_view st
 	return (start < end) && (std::search(&m_rom[start], &m_rom[end], string.begin(), string.end()) != &m_rom[end]);
 }
 
+// timer 1 is free for the game's ARM code: only the counter is emulated
+u64 a26_rom_harmony_device::timer1_ticks() const
+{
+	return machine().time().as_ticks(ARM_CLOCK) / (m_timer1_prescale + 1);
+}
+
+u32 a26_rom_harmony_device::timer1_r(offs_t offset)
+{
+	switch (offset)
+	{
+	case 0x04 / 4: return m_timer1_control;
+	case 0x08 / 4: return BIT(m_timer1_control, 0) ? u32(timer1_ticks() - m_timer1_base) : m_timer1_count;
+	case 0x0c / 4: return m_timer1_prescale;
+	default:
+		LOGARM("timer 1 read %02x\n", offset * 4);
+		return 0;
+	}
+}
+
+void a26_rom_harmony_device::timer1_w(offs_t offset, u32 data)
+{
+	const u32 count = BIT(m_timer1_control, 0) ? u32(timer1_ticks() - m_timer1_base) : m_timer1_count;
+	switch (offset)
+	{
+	case 0x04 / 4:
+		m_timer1_control = data & 3;
+		m_timer1_count = BIT(data, 1) ? 0 : count;
+		break;
+	case 0x08 / 4:
+		m_timer1_count = data;
+		break;
+	case 0x0c / 4:
+		m_timer1_count = count;
+		m_timer1_prescale = data;
+		break;
+	default:
+		LOGARM("timer 1 write %02x = %08x\n", offset * 4, data);
+		return;
+	}
+	m_timer1_base = timer1_ticks() - m_timer1_count;
+}
+
+// address of the first instruction of the driver that matches, or ~0
+u32 a26_rom_harmony_device::driver_word(u32 mask, u32 match, u32 start) const
+{
+	const u32 end = (m_format == FORMAT_DPCP) ? 0xc00 : 0x800;
+	for (u32 address = start; address < end; address += 4)
+		if ((rom_r32(address) & mask) == match)
+			return address;
+	return ~0U;
+}
+
 u32 a26_rom_harmony_device::return_r(offs_t offset)
 {
 	if (!machine().side_effects_disabled() && !offset)
@@ -362,7 +530,7 @@ bool a26_rom_harmony_device::fast_fetch_follows(offs_t offset)
 // step the phase accumulators of the three voices up to now
 void a26_rom_harmony_device::music_update()
 {
-	const u64 now = machine().time().as_ticks(m_music_clock);
+	const u64 now = machine().time().as_ticks(MUSIC_CLOCK);
 	const u32 ticks = u32(now - m_music_ticks);
 	m_music_ticks = now;
 	for (int voice = 0; voice < 3; voice++)
@@ -400,6 +568,10 @@ u8 a26_rom_harmony_device::read(offs_t offset)
 	{
 	case FORMAT_DPCP:
 		return dpcp_read(offset);
+	case FORMAT_CDF:
+	case FORMAT_CDFJ:
+	case FORMAT_CDFJP:
+		return cdf_read(offset);
 	default:
 		return m_rom[offset & (m_rom_size - 1)];
 	}
@@ -413,6 +585,11 @@ void a26_rom_harmony_device::write(offs_t offset, u8 data)
 	{
 	case FORMAT_DPCP:
 		dpcp_write(offset, data);
+		break;
+	case FORMAT_CDF:
+	case FORMAT_CDFJ:
+	case FORMAT_CDFJP:
+		cdf_write(offset, data);
 		break;
 	default:
 		break;
@@ -688,4 +865,259 @@ u8 a26_rom_harmony_device::dpcp_amplitude()
 	for (int voice = 0; voice < 3; voice++)
 		sum += arm_r8(ram_r32(DPCP_WAVEFORM + voice * 4) + (m_arm->fiq_reg(8 + voice) >> 27));
 	return sum;
+}
+
+
+//-------------------------------------------------
+//  CDF, CDFJ, CDFJ+
+//-------------------------------------------------
+
+void a26_rom_harmony_device::cdf_setup()
+{
+	if (m_format == FORMAT_CDF)
+	{
+		u32 version = ~0U;
+		for (u32 i = 0; i + 12 <= 0x800 && version == ~0U; i++)
+			if (!memcmp(&m_rom[i], "CDF", 3) && !memcmp(&m_rom[i], &m_rom[i + 4], 4) && !memcmp(&m_rom[i], &m_rom[i + 8], 4))
+				version = m_rom[i + 3];
+		if (version != 1)
+			logerror("CDF version %d is handled as version 1\n", int(version));
+
+		m_cdf_streams = 0xa0;
+		m_cdf_amplitude = 0x22;
+		m_cdf_jumps = 1;
+	}
+	else
+	{
+		m_cdf_streams = 0x98;
+		m_cdf_amplitude = 0x23;
+		m_cdf_jumps = 2;
+	}
+	m_cdf_waveforms = 0x1b0;
+	m_cdf_shift = (m_format == FORMAT_CDFJP) ? 16 : 20;
+
+	// ldrb sp, [ip, #offset] / strb sp, [r0, #0x15]: amplitude kept for the next read
+	m_cdf_latch = -1;
+	for (u32 address = driver_word(0xff7f'f000, 0xe55c'd000); address != ~0U; address = driver_word(0xff7f'f000, 0xe55c'd000, address + 4))
+	{
+		if (rom_r32(address + 4) == 0xe5c0'd015)
+		{
+			const u32 instruction = rom_r32(address);
+			m_cdf_latch = m_cdf_streams + (BIT(instruction, 23) ? (instruction & 0xfff) : -(instruction & 0xfff));
+			break;
+		}
+	}
+
+	// tst r5, #0xf000: the mode selects sampled audio; lsrs r3, r8, #shift: sample position
+	m_cdf_digital = driver_word(0xffff'ffff, 0xe315'0a0f) != ~0U;
+	const u32 digital = driver_word(0xffff'f07f, 0xe1b0'3028);
+	m_cdf_digital_shift = (digital != ~0U) ? ((rom_r32(digital) >> 7) & 0x1f) : 21;
+
+	// cmp r2, #$a9 followed by cmpne r2, #opcode for the other fast fetch opcodes
+	std::fill(std::begin(m_cdf_ff_opcodes), std::end(m_cdf_ff_opcodes), 0xa9);
+	const u32 lda = driver_word(0xffff'ffff, 0xe352'00a9);
+	for (int i = 1; (lda != ~0U) && (i < 3); i++)
+		if ((rom_r32(lda + i * 4) & 0xffff'ff00) == 0x1352'0000)
+			m_cdf_ff_opcodes[i] = rom_r32(lda + i * 4);
+
+	// sub r2, r2, #offset before the operand is checked
+	m_cdf_ff_offset = 0;
+	for (u32 address = driver_word(0xffff'ff00, 0xe242'2000); address != ~0U; address = driver_word(0xffff'ff00, 0xe242'2000, address + 4))
+	{
+		if ((rom_r32(address + 4) & 0xffff'ff00) == 0xe352'0000)
+		{
+			m_cdf_ff_offset = rom_r32(address);
+			break;
+		}
+	}
+
+	// the register handlers are followed by the ROM offsets for $1FF4-$1FFB
+	for (int i = 0; i < 8; i++)
+		m_cdf_banks[i] = (m_format == FORMAT_CDFJP) ? (0x800 + (i % 7) * 0x1000) : (0x1000 + ((i + 6) % 7) * 0x1000);
+	for (u32 address = 0; address + 48 <= 0x800; address += 4)
+	{
+		bool found = true;
+		for (int i = 0; found && i < 4; i++)
+			found = (rom_r32(address + i * 4) & 0xffff'f800) == 0x4000'0000;
+		for (int i = 0; found && i < 8; i++)
+		{
+			const s32 offset = s32(rom_r32(address + 16 + i * 4));
+			found = !(offset & 0x7ff) && (offset >= -0x1000) && (offset < 0x8000);
+		}
+		if (found)
+		{
+			for (int i = 0; i < 8; i++)
+				m_cdf_banks[i] = 0x1000 + s32(rom_r32(address + 16 + i * 4));
+			break;
+		}
+	}
+
+	// the game's ARM code, entered with the driver's registers pushed on the supervisor stack
+	if (m_format == FORMAT_CDFJP)
+	{
+		m_cdf_entry = rom_r32(0x17f8);
+		m_cdf_stack = rom_r32(0x17f4) - 9 * 4;
+	}
+	else
+	{
+		m_cdf_entry = 0x0800;
+		m_cdf_stack = 0x4000'1fdc - 9 * 4;
+	}
+
+	logerror("%s: streams at %03x, %d jump streams, %d bit pointers, %s, fast fetch %02x %02x %02x + %02x, entry %08x\n",
+			(m_format == FORMAT_CDFJP) ? "CDFJ+" : (m_format == FORMAT_CDFJ) ? "CDFJ" : "CDF",
+			m_cdf_streams, m_cdf_jumps, 32 - m_cdf_shift,
+			(m_cdf_latch < 0) ? "amplitude at once" : "amplitude on the next read",
+			m_cdf_ff_opcodes[0], m_cdf_ff_opcodes[1], m_cdf_ff_opcodes[2], m_cdf_ff_offset, m_cdf_entry);
+}
+
+u8 a26_rom_harmony_device::cdf_read(offs_t offset)
+{
+	const auto rom = [this] (u32 address) { return m_rom[address & (m_rom_size - 1)]; };
+
+	if (machine().side_effects_disabled())
+		return rom(m_bank_offset + offset);
+
+	// operand of an LDA # or JMP in fast fetch mode
+	if (m_ff_pending)
+	{
+		m_ff_pending = false;
+		if (offset == m_ff_offset && m_maincpu->total_cycles() == m_ff_cycle + 1)
+		{
+			// bit 7 marks the two operand bytes of a JMP
+			const u8 data = cdf_stream_r(m_ff_stream & 0x7f, BIT(m_ff_stream, 7));
+			if (--m_ff_remaining)
+			{
+				m_ff_pending = true;
+				m_ff_offset++;
+				m_ff_cycle++;
+			}
+			return data;
+		}
+	}
+
+	if (offset >= 0xff0 && offset <= 0xff3)
+		return rom(m_bank_offset + offset);
+	cdf_bank(offset);
+
+	const u32 address = m_bank_offset + offset;
+	const u8 data = rom(address);
+	if (!(m_mode & 0x0f))
+	{
+		if (data == m_cdf_ff_opcodes[0] || data == m_cdf_ff_opcodes[1] || data == m_cdf_ff_opcodes[2])
+		{
+			const u8 operand = rom(address + 1) - m_cdf_ff_offset;
+			if (operand <= m_cdf_amplitude)
+			{
+				m_ff_pending = true;
+				m_ff_offset = offset + 1;
+				m_ff_cycle = m_maincpu->total_cycles();
+				m_ff_stream = operand;
+				m_ff_remaining = 1;
+			}
+		}
+		else if (data == 0x4c && !rom(address + 2) && rom(address + 1) < m_cdf_jumps)
+		{
+			m_ff_pending = true;
+			m_ff_offset = offset + 1;
+			m_ff_cycle = m_maincpu->total_cycles();
+			m_ff_stream = 0x80 | (CDF_JUMP_STREAM + rom(address + 1));
+			m_ff_remaining = 2;
+		}
+	}
+	return data;
+}
+
+void a26_rom_harmony_device::cdf_write(offs_t offset, u8 data)
+{
+	const u32 comm = m_cdf_streams + CDF_COMM_STREAM * 4;
+
+	switch (offset)
+	{
+	case 0xff0:
+	{
+		// DSWRITE
+		const u32 pointer = ram_r32(comm);
+		ram_w8(CDF_DISPLAY + (pointer >> m_cdf_shift), data);
+		ram_w32(comm, pointer + (1U << m_cdf_shift));
+		break;
+	}
+
+	case 0xff1:
+		// DSPTR: the byte written before becomes the high part
+		ram_w32(comm, ((ram_r32(comm) << 8) & ((m_cdf_shift == 20) ? 0xf000'0000 : 0xff00'0000)) | (u32(data) << m_cdf_shift));
+		break;
+
+	case 0xff2:
+		// SETMODE
+		m_mode = data;
+		break;
+
+	case 0xff3:
+		// CALLFN
+		call_arm(m_cdf_entry, (data == 0xfe) ? 0x53 : 0xd3, m_cdf_stack, 0);
+		break;
+
+	default:
+		cdf_bank(offset);
+		break;
+	}
+}
+
+void a26_rom_harmony_device::cdf_bank(offs_t offset)
+{
+	if (offset >= 0xff4 && offset <= 0xffb)
+		m_bank_offset = m_cdf_banks[offset - 0xff4];
+}
+
+u8 a26_rom_harmony_device::cdf_stream_r(u8 stream, bool jump)
+{
+	if (!jump && stream == m_cdf_amplitude)
+		return cdf_amplitude();
+
+	const u32 entry = m_cdf_streams + stream * 4;
+	const u32 pointer = ram_r32(entry);
+	if (jump)
+		ram_w32(entry, pointer + (1U << m_cdf_shift));
+	else
+		ram_w32(entry, pointer + (ram_r32(m_cdf_streams + (m_cdf_amplitude + stream) * 4) << (m_cdf_shift - 8)));
+	return ram_r8(CDF_DISPLAY + (pointer >> m_cdf_shift));
+}
+
+u8 a26_rom_harmony_device::cdf_amplitude()
+{
+	music_update();
+
+	u8 value;
+	if (m_cdf_digital && !(m_mode & 0xf0))
+	{
+		// 4 bit samples, two to a byte, high nibble first
+		const u32 counter = m_arm->fiq_reg(8);
+		value = arm_r8(ram_r32(m_cdf_waveforms) + (counter >> m_cdf_digital_shift));
+		if (!BIT(counter, m_cdf_digital_shift - 1))
+			value >>= 4;
+		if (m_format != FORMAT_CDFJP)
+			value &= 0x0f;
+	}
+	else
+	{
+		// the shift of each voice is in the driver's own code, which the game can patch
+		const u32 code = rom_r32(0x7f8) - 0x4000'0000;
+		value = 0;
+		for (int voice = 0; voice < 3; voice++)
+		{
+			const u32 instruction = ram_r32(code + voice * 4);
+			const int shift = ((instruction & 0x0ff0'0070) == 0x07d0'0020) ? ((instruction >> 7) & 0x1f) : 27;
+			const u32 counter = m_arm->fiq_reg(8 + voice);
+			value += arm_r8(ram_r32(m_cdf_waveforms + voice * 4) + (shift ? (counter >> shift) : 0));
+		}
+	}
+
+	if (m_cdf_latch >= 0)
+	{
+		const u8 previous = ram_r8(m_cdf_latch);
+		ram_w8(m_cdf_latch, value);
+		return previous;
+	}
+	return value;
 }
