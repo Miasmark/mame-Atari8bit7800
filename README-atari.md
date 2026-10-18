@@ -7,6 +7,17 @@ please report problems on this fork, not to MAME. MAME is a registered trademark
 Branch `atari-0.289` is MAME 0.289 plus the commits listed by `git log mame0289..atari-0.289`; each
 change is its own commit with a description of what was measured.
 
+## What cartridge is this? (2600 and 7800)
+
+Machine Information (in the menu) and Media Control show, under the mounted file, the board it
+runs on and how that was found. For example:
+- 7800: "SuperGame Bankswitch + POKEY (board from the .a78 header, saves to the High Score Cart or a
+  SaveKey in port 2)", or "no header, board detected from the image";
+- 2600: "HARMONY/MELODY, DPC+ driver", "F8 bankswitch, 128 bytes of RAM (Super Chip)",
+  "FA2 bankswitch, saves to the Harmony's flash".
+
+Lua scripts can read the same text as `image.media_details`.
+
 ## Atari 7800 (`a7800`, `a7800p`)
 
 - **One cartridge slot for everything.** The Cartridge slot (File Manager, `-cart`) takes `.a78`,
