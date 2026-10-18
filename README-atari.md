@@ -68,6 +68,8 @@ mode. With Warm, every colour matches the Pocket core's own screenshots of a col
 
 ## Atari 2600 (`a2600`, `a2600p`)
 
+- **XG-1 light gun** (`-joyport1 xg1`): trigger on pin 1, light sensor on pin 6, seeing what the
+  TIA has just drawn where it is aimed. Sentinel and Shooting Arcade could not be tested.
 - **SaveKey / AtariVox memory** for a controller port: `-joyport2 savekey` (or Slot Devices in the
   menu). The 32K EEPROM is kept in the nvram folder, shared by all games as a real one is.
 - **FA2 (Star Castle Arcade) saves** its Hall of Fame to the Harmony's flash, kept in the nvram
