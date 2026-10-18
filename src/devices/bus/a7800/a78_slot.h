@@ -134,11 +134,14 @@ public:
 
 	virtual bool is_reset_on_load() const noexcept override { return true; }
 	virtual const char *image_interface() const noexcept override { return "a7800_cart"; }
-	virtual const char *file_extensions() const noexcept override { return "a78"; }
+	virtual const char *file_extensions() const noexcept override { return "a78,bin,a26"; }
 	virtual u32 unhashed_header_length() const noexcept override { return 128; }
 
 	// device_slot_interface implementation
 	virtual std::string get_default_card_software(get_default_card_software_hook &hook) const override;
+
+	// the image option of the 2600 cartridge slot, to which a 2600 image put in this slot goes
+	void set_vcs_image(const char *name) { m_vcs_image = name; }
 
 	int get_cart_type() { return m_type; }
 	bool has_cart() { return m_cart != nullptr; }
@@ -163,9 +166,14 @@ private:
 	std::pair<std::error_condition, std::string> verify_header(const uint8_t *header);
 	int validate_header(int head, bool log) const;
 	void internal_header_logging(const uint8_t *header, uint32_t len);
+	int softlist_type(const uint8_t *data, uint32_t len) const;
+	int headerless_type(const uint8_t *data, uint32_t len) const;
+	void alloc_board_memory();
 
 	device_a78_cart_interface *m_cart;
 	int m_type;
+	const char *m_vcs_image;
+	static std::string s_vcs_forwarded;
 };
 
 

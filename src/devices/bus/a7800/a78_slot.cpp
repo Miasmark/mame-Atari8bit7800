@@ -28,6 +28,11 @@
 #include "emu.h"
 #include "a78_slot.h"
 
+#include "emuopts.h"
+#include "romload.h"
+#include "softlist_dev.h"
+
+#include "hashing.h"
 #include "multibyte.h"
 
 //**************************************************************************
@@ -119,6 +124,7 @@ a78_cart_slot_device::a78_cart_slot_device(const machine_config &mconfig, const 
 	, device_slot_interface(mconfig, *this)
 	, m_cart(nullptr)
 	, m_type(0)
+	, m_vcs_image(nullptr)
 {
 }
 
@@ -380,6 +386,104 @@ static int a78_get_pcb_id(const char *slot)
 	return 0;
 }
 
+// Activision images come in two orders. The software list's (and the "(OM)" .a78 files') are the
+// EPROM's, which a78_rom_act_device reads; the usual .a78 order ("(AM)", the a7800 fork's) has each
+// pair of 8K blocks exchanged, so read MAME's way its vectors land in a block of $00 or $FF and the
+// BIOS never hands over. Put such an image back in EPROM order, but only when its reset vector says
+// so: one that already boots is left alone.
+static void activision_eprom_order(uint8_t *rom, uint32_t len)
+{
+	if (len != 0x20000)
+		return;
+	auto usable = [] (uint16_t v) { return v >= 0x4000 && v != 0xffff; };
+	uint16_t const eprom = get_u16le(&rom[0x1fffc]);
+	uint16_t const usual = get_u16le(&rom[0x1dffc]);  // $FFFC is in block 14 in the usual order
+	if (!usable(eprom) && usable(usual))
+	{
+		for (uint32_t b = 0; b < len; b += 0x4000)
+			std::swap_ranges(&rom[b], &rom[b + 0x2000], &rom[b + 0x2000]);
+		osd_printf_info("Activision image in the usual .a78 block order (reset $%04X): read in EPROM order\n", usual);
+	}
+}
+
+// the test the 7800 BIOS makes before it runs a cartridge as a 7800 one: $FFF9 AND $0B is 3, and the
+// top nibble is where the signed area starts, which has to be in the cartridge ($FFF9 is at check)
+static bool a78_bios_check(uint8_t check, uint32_t len)
+{
+	uint32_t const signed_start = (check & 0xf0) << 8;
+	return (check & 0x0b) == 0x03 && signed_start >= std::max<uint32_t>(0x10000 - std::min<uint32_t>(len, 0xc000), 0x4000);
+}
+
+// the image this slot last passed on to the 2600 cartridge slot
+std::string a78_cart_slot_device::s_vcs_forwarded;
+
+// what headerless_type() returns for an image that is not a 7800 one, or a 7800 one too
+// big to say how its board works without a header
+enum
+{
+	HEADERLESS_2600 = -1,
+	HEADERLESS_UNKNOWN = -2
+};
+
+// The board of a known cartridge dump, from the software lists of this slot's interface (which
+// covers images without a header, and the High Score Cartridge's own image); -1 if none knows it.
+int a78_cart_slot_device::softlist_type(const uint8_t *data, uint32_t len) const
+{
+	uint32_t const crc = util::crc32_creator::simple(data, len);
+	for (software_list_device &swlist : software_list_device_enumerator(mconfig().root_device()))
+	{
+		for (const software_info &sw : swlist.get_info())
+		{
+			for (const software_part &part : sw.parts())
+			{
+				if (!part.matches_interface(image_interface()))
+					continue;
+				for (const rom_entry &entry : part.romdata())
+				{
+					uint32_t entry_crc;
+					if (ROMENTRY_ISFILE(entry) && ROM_GETLENGTH(entry) == len
+							&& util::hash_collection(entry.hashdata()).crc(entry_crc) && entry_crc == crc)
+					{
+						char const *const slot = part.feature("slot");
+						return slot ? a78_get_pcb_id(slot) : A78_TYPE0;
+					}
+				}
+			}
+		}
+	}
+	return -1;
+}
+
+// An image without a header: a known 7800 dump, a 7800 image the BIOS would run, or a 2600 image.
+int a78_cart_slot_device::headerless_type(const uint8_t *data, uint32_t len) const
+{
+	if (int const type = softlist_type(data, len); type >= 0)
+		return type;
+
+	// A 7800 image passes the BIOS's own test: of 1309 7800 images (header removed) this takes 1271
+	// (not tiny demos, BankSet tests or Activision's .a78 block order, looked for below), and none
+	// of 279 2600 ones.
+	if (len < 0x4000 || (len % 0x4000))
+		return HEADERLESS_2600;
+	if (!a78_bios_check(data[len - 7], len))
+	{
+		// Activision's 128K in the usual .a78 order: $FFF9 is in block 14
+		if (len == 0x20000 && a78_bios_check(data[0x1dff9], len))
+			return A78_ACTIVISION;
+		return HEADERLESS_2600;
+	}
+
+	// a flat image fills $4000-$FFFF from the top; SuperGame boards come as 128K, or 144K with
+	// the extra bank at $4000
+	if (len <= 0xc000)
+		return A78_TYPE0;
+	if (len == 0x20000)
+		return A78_TYPE2;
+	if (len == 0x24000)
+		return A78_TYPEA;
+	return HEADERLESS_UNKNOWN;
+}
+
 static const char *a78_get_slot(int type)
 {
 	for (auto & elem : slot_list)
@@ -393,6 +497,7 @@ static const char *a78_get_slot(int type)
 
 std::pair<std::error_condition, std::string> a78_cart_slot_device::call_load()
 {
+	// without a board, the image is a 2600 one that the 2600 cartridge slot loads
 	if (m_cart)
 	{
 		uint32_t len;
@@ -424,12 +529,32 @@ std::pair<std::error_condition, std::string> a78_cart_slot_device::call_load()
 		{
 			// Load and check the header
 			int mapper;
-			uint8_t head[128];
+			uint8_t head[128] = { };
 			fread(head, 128);
 
 			auto err = verify_header(head);
 			if (err.first)
-				return err;
+			{
+				// no header: a dump of the cartridge's ROM alone
+				len = length();
+				std::vector<uint8_t> data(len);
+				fseek(0, SEEK_SET);
+				fread(&data[0], len);
+				int const type = headerless_type(&data[0], len);
+				if (type == HEADERLESS_2600)
+					return std::make_pair(image_error::INVALIDIMAGE, "This is a 2600 cartridge: it goes in the 2600 cartridge slot (-cart2600)");
+				if (type == HEADERLESS_UNKNOWN)
+					return std::make_pair(image_error::INVALIDIMAGE, "A 7800 image of this size needs its .a78 header to say what board it is on");
+
+				m_type = type;
+				logerror("Image without a header: cart type 0x%x\n", m_type);
+				m_cart->rom_alloc(len);
+				memcpy(m_cart->get_rom_base(), &data[0], len);
+				if (m_type == A78_ACTIVISION)
+					activision_eprom_order(m_cart->get_rom_base(), len);
+				alloc_board_memory();
+				return std::make_pair(std::error_condition(), std::string());
+			}
 
 			len = get_u32be(&head[49]);
 			if (len + 128 > length())
@@ -513,46 +638,40 @@ std::pair<std::error_condition, std::string> a78_cart_slot_device::call_load()
 			m_cart->rom_alloc(len);
 			fread(m_cart->get_rom_base(), len);
 
-			// Activision images come in two orders. The software list's (and the "(OM)" .a78
-			// files') are the EPROM's, which a78_rom_act_device reads; the usual .a78 order ("(AM)",
-			// the a7800 fork's) has each pair of 8K blocks exchanged, so read MAME's way its vectors
-			// land in a block of $00 or $FF and the BIOS never hands over. Put such an image back in
-			// EPROM order, but only when its reset vector says so: one that already boots is left alone.
-			if (m_type == A78_ACTIVISION && len == 0x20000)
-			{
-				uint8_t *rom = m_cart->get_rom_base();
-				auto usable = [] (uint16_t v) { return v >= 0x4000 && v != 0xffff; };
-				uint16_t const eprom = get_u16le(&rom[0x1fffc]);
-				uint16_t const usual = get_u16le(&rom[0x1dffc]);  // $FFFC is in block 14 in the usual order
-				if (!usable(eprom) && usable(usual))
-				{
-					for (uint32_t b = 0; b < len; b += 0x4000)
-						std::swap_ranges(&rom[b], &rom[b + 0x2000], &rom[b + 0x2000]);
-					osd_printf_info("Activision image in the usual .a78 block order (reset $%04X): read in EPROM order\n", usual);
-				}
-			}
+			// the High Score Cartridge's own image: its header says nothing of it
+			if (len == 0x1000 && softlist_type(m_cart->get_rom_base(), len) == A78_HSC)
+				m_type = A78_HSC;
 
-			if (m_type == A78_TYPE6 || m_type == A78_TYPE8)
-				m_cart->ram_alloc(0x4000);
-			if (m_type == A78_MEGACART || (m_type >= A78_VERSABOARD && m_type <= A78_VERSA_POK450)
-					|| (m_type >= A78_TYPE0_POK450_440 && m_type <= A78_VERSA_POK450_440))
-				m_cart->ram_alloc(0x8000);
-			// bankset bank RAM: 16K for the CPU at $4000 and 16K for MARIA
-			if (m_type == A78_BANKSET_SG_BANKRAM || m_type == A78_BANKSET_SG_BANKRAM_POK800 ||
-					m_type == A78_BANKSET_BANKRAM || m_type == A78_BANKSET_BANKRAM_POK800)
-				m_cart->ram_alloc(0x8000);
-			if (m_type == A78_XB_BOARD || m_type == A78_XM_BOARD)
-				m_cart->ram_alloc(0x20000);
-			if (m_type == A78_HSC || m_type == A78_XM_BOARD)
-			{
-				m_cart->nvram_alloc(0x800);
-				battery_load(m_cart->get_nvram_base(), 0x800, 0xff);
-			}
+			if (m_type == A78_ACTIVISION)
+				activision_eprom_order(m_cart->get_rom_base(), len);
+
+			alloc_board_memory();
 		}
 
 		//printf("Type: %s\n", a78_get_slot(m_type));
 	}
 	return std::make_pair(std::error_condition(), std::string());
+}
+
+// RAM and battery-backed RAM on the board of an image loaded from a file
+void a78_cart_slot_device::alloc_board_memory()
+{
+	if (m_type == A78_TYPE6 || m_type == A78_TYPE8)
+		m_cart->ram_alloc(0x4000);
+	if (m_type == A78_MEGACART || (m_type >= A78_VERSABOARD && m_type <= A78_VERSA_POK450)
+			|| (m_type >= A78_TYPE0_POK450_440 && m_type <= A78_VERSA_POK450_440))
+		m_cart->ram_alloc(0x8000);
+	// bankset bank RAM: 16K for the CPU at $4000 and 16K for MARIA
+	if (m_type == A78_BANKSET_SG_BANKRAM || m_type == A78_BANKSET_SG_BANKRAM_POK800 ||
+			m_type == A78_BANKSET_BANKRAM || m_type == A78_BANKSET_BANKRAM_POK800)
+		m_cart->ram_alloc(0x8000);
+	if (m_type == A78_XB_BOARD || m_type == A78_XM_BOARD)
+		m_cart->ram_alloc(0x20000);
+	if (m_type == A78_HSC || m_type == A78_XM_BOARD)
+	{
+		m_cart->nvram_alloc(0x800);
+		battery_load(m_cart->get_nvram_base(), 0x800, 0xff);
+	}
 }
 
 
@@ -597,8 +716,56 @@ std::string a78_cart_slot_device::get_default_card_software(get_default_card_sof
 		hook.image_file()->length(len); // FIXME: check error return
 
 		// Load and check the header
-		uint8_t head[128];
+		uint8_t head[128] = { };
 		/*auto const [err, actual] =*/ read(*hook.image_file(), &head[0], 128); // FIXME: check error return or read returning short
+
+		bool const has_header = !memcmp(&head[1], "ATARI7800", 9);
+		int headerless = -1;
+		if (!has_header)
+		{
+			// no header: a dump of the cartridge's ROM alone
+			std::vector<uint8_t> data(len);
+			hook.image_file()->seek(0, SEEK_SET);
+			read(*hook.image_file(), &data[0], len);
+			headerless = headerless_type(&data[0], len);
+		}
+
+		if (m_vcs_image)
+		{
+			// A 2600 cartridge goes in the 2600 cartridge slot, as if it had been given there, so
+			// this slot takes 2600 images too (from the command line or the File Manager); it
+			// keeps the image itself, with no board, so that this is done again whenever the
+			// options are (a reset clears the option of an image that is not loaded yet).
+			emu_options &options = mconfig().options();
+			std::string const path(options.image_option(instance_name()).value());
+			::image_option &vcs = options.image_option(m_vcs_image);
+			if (!has_header && headerless == HEADERLESS_2600)
+			{
+				if (vcs.value().empty() || vcs.value() == s_vcs_forwarded)
+				{
+					s_vcs_forwarded = path;
+					vcs.specify(path);
+				}
+			}
+			else if (!s_vcs_forwarded.empty() && vcs.value() == s_vcs_forwarded)
+			{
+				// a 7800 cartridge now: take out the 2600 one this slot put in
+				s_vcs_forwarded.clear();
+				vcs.specify("");
+			}
+		}
+
+		if (!has_header)
+			return (headerless >= 0) ? a78_get_slot(headerless) : std::string();
+
+		// the High Score Cartridge's own image
+		if (len == 0x1000 + 128)
+		{
+			std::vector<uint8_t> data(0x1000);
+			read(*hook.image_file(), &data[0], 0x1000);
+			if (softlist_type(&data[0], 0x1000) == A78_HSC)
+				return a78_get_slot(A78_HSC);
+		}
 
 		// let's try to auto-fix some common errors in the header
 		int const mapper = validate_header(get_u16be(&head[53]), false);
@@ -656,7 +823,19 @@ std::string a78_cart_slot_device::get_default_card_software(get_default_card_sof
 		return std::string(slot_string);
 	}
 	else
+	{
+		// no image: nor the 2600 one this slot put in
+		if (m_vcs_image && !s_vcs_forwarded.empty())
+		{
+			::image_option &vcs = mconfig().options().image_option(m_vcs_image);
+			if (vcs.value() == s_vcs_forwarded)
+			{
+				s_vcs_forwarded.clear();
+				vcs.specify("");
+			}
+		}
 		return software_get_default_slot("a78_rom");
+	}
 }
 
 
