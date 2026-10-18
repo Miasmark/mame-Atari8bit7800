@@ -160,6 +160,9 @@ protected:
 	TIMER_DEVICE_CALLBACK_MEMBER(interrupt);
 	TIMER_CALLBACK_MEMBER(maria_startvisible);
 	TIMER_CALLBACK_MEMBER(maria_startdma);
+	// a 7800 cartridge in the slot (a 2600 image in it goes to the 2600 slot, and leaves it without a board)
+	bool has_7800_cart() { return m_cart->exists() && m_cart->has_cart(); }
+
 	uint8_t riot_joystick_r();
 	uint8_t riot_console_button_r();
 	void riot_button_pullup_w(uint8_t data);
@@ -1616,10 +1619,10 @@ void a7800_state::machine_start()
 	m_maria_bitmap.allocate(m_7800_width, m_7800_height);
 
 	// a 2600 cartridge (and no 7800 one): seen in 7800 mode where A12 is set, for the BIOS
-	m_vcs_window = !m_cart->exists() && m_vcs_cart->exists();
+	m_vcs_window = !has_7800_cart() && m_vcs_cart->exists();
 
 	// install additional handlers, if needed
-	if (m_cart->exists())
+	if (has_7800_cart())
 	{
 		// a bankset cartridge: MARIA's display lists belong in console RAM, not in the cartridge's
 		// ROM or RAM (7800.8bitdev.org, Bankset Bankswitching); the 52K halves reach down to $3000
@@ -1707,7 +1710,7 @@ void a7800_state::machine_reset()
 	m_maria_bios_view.select(0);
 	set_vcs_mode(false);
 
-	if (system_bios() == m_skip_bios && !m_cart->exists() && m_vcs_cart->exists())
+	if (system_bios() == m_skip_bios && !has_7800_cart() && m_vcs_cart->exists())
 	{
 		// no BIOS and a 2600 cartridge: straight into 2600 mode, as the BIOS's bootstrap leaves it
 		// (INPTCTRL $FD), and the reset sequence takes the cartridge's own vector
@@ -1777,10 +1780,11 @@ void a7800_state::a7800_common(machine_config &config, uint32_t clock)
 	m_riot->pb_wr_callback().set(FUNC(a7800_state::riot_button_pullup_w));
 
 	A78_CART_SLOT(config, m_cart, clock/8, a7800_cart, nullptr);
+	m_cart->set_vcs_image("cartridge2600");
 
 	// 2600 mode: the 2600's bus, its cartridge slot (-cart2600) and the TIA's video
 	ADDRESS_MAP_BANK(config, m_vcsbus).set_map(&a7800_state::vcs_bus_map).set_options(ENDIANNESS_LITTLE, 8, 13, 0x2000);
-	VCS_CART_SLOT(config, m_vcs_cart, vcs_cart, nullptr);
+	VCS_CART_SLOT(config, m_vcs_cart, vcs_cart_internal, nullptr);
 	m_vcs_cart->set_address_space(m_vcsbus, AS_PROGRAM);
 	m_vcs_cart->set_image_names("cartridge2600", "cart2600");
 }
@@ -1798,6 +1802,7 @@ void a7800_ntsc_state::a7800_ntsc(machine_config &config)
 
 	// software lists
 	SOFTWARE_LIST(config, "cart_list").set_original("a7800").set_filter("NTSC");
+	SOFTWARE_LIST(config, "cart_list_2600").set_compatible("a2600").set_filter("NTSC");
 }
 
 void a7800_pal_state::a7800_pal(machine_config &config)
@@ -1813,6 +1818,7 @@ void a7800_pal_state::a7800_pal(machine_config &config)
 
 	// software lists
 	SOFTWARE_LIST(config, "cart_list").set_original("a7800").set_filter("PAL");
+	SOFTWARE_LIST(config, "cart_list_2600").set_compatible("a2600").set_filter("PAL");
 }
 
 
