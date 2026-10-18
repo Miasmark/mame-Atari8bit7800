@@ -167,6 +167,6 @@ jobs:
         - macOS (Apple silicon): unzip, then the first time right-click mame and choose Open, or run xattr -dr com.apple.quarantine on the folder; the build is not signed by a developer.
         - Linux x64: one AppImage that carries its libraries (README, licence and software lists inside); chmod +x it. Without FUSE, run it with --appimage-extract-and-run.
 
-        BIOS images are not included. The 7800 starts without one with -bios skip.
+        BIOS images are not included. The 7800 does not need one: it starts straight in the cartridge.
         EOF
         gh release create "${GITHUB_REF_NAME}" dist/* --draft --title "${GITHUB_REF_NAME}" --notes-file notes.md

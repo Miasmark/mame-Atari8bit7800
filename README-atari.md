@@ -34,7 +34,7 @@ Lua scripts can read the same text as `image.media_details`.
   - the CPU sees a 6507's 13-bit bus.
 
   All of MAME's 2600 cartridge types work, including the new ones below, and Harmony/ARM carts too.
-  `-bios skip` with a 2600 cartridge starts straight in 2600 mode. Results:
+  Without a BIOS (or with `-bios skip`) a 2600 cartridge starts straight in 2600 mode. Results:
   - **Compared with the `a2600` driver** on 251 USA games: 242 are pixel-identical at 10 s. The other
     9 keep identical RAM; `a2600` uses a 3.579575 MHz clock, the 7800 its own 3.579545 MHz crystal.
   - **Through 7800OpenBIOS:** all 16 games tested boot into their attract modes.
@@ -48,13 +48,15 @@ Lua scripts can read the same text as `image.media_details`.
 - **Activision `.a78` images in the usual block order** now boot.
 - **MARIA timing from the 7800-devtools a7800 fork**, with MARIA's DMA in its own address space, so
   debugger and Lua watches can tell its reads from the CPU's.
-- **`-bios skip`** boots straight into the cartridge, with no BIOS file needed.
+- **No BIOS file needed.** Without one the 7800 boots straight into the cartridge, as with
+  `-bios skip`, and the system is not shown as missing its ROMs. With the BIOS file in the ROM folder
+  it runs as before; `-bios skip` still skips it.
 - **High Score Cartridge from its own image:** `-cart "High Score Cartridge.a78" -cart2 game.a78`
   (the software list entry `hiscore` works as before). Its scores are saved in the nvram folder.
 - **SaveKey / AtariVox memory in controller port 2** (Machine Configuration, Controller Port 2):
   Auto plugs one in when the cartridge's header asks for it; Joystick or SaveKey force the choice.
   It also works in 2600 mode. The AtariVox's speech is not emulated. Like all MAME nvram, its file is
-  kept per BIOS choice (`nvram/a7800/` with the default BIOS, `nvram/a7800_2/` with `-bios skip`).
+  kept per BIOS choice (`nvram/a7800/` with the default BIOS, `nvram/a7800_2/` without a BIOS).
 
 ## Atari 2600 (`a2600`, `a2600p`)
 
@@ -122,7 +124,7 @@ Releases page, built by `.github/workflows/atari-release.yml`:
 - **Linux x86-64**: one AppImage carrying its libraries (glibc 2.34 or later). `chmod +x` it and
   run it; without FUSE, add `--appimage-extract-and-run`.
 
-BIOS images are not included; the 7800 starts without one with `-bios skip`.
+BIOS images are not included; the 7800 does not need one (it starts straight in the cartridge).
 
 ## Building
 
