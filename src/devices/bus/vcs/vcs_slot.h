@@ -39,6 +39,7 @@ public:
 	virtual const char *file_extensions() const noexcept override { return "bin,a26"; }
 	virtual const char *image_type_name() const noexcept override { return m_image_type ? m_image_type : device_cartrom_image_interface::image_type_name(); }
 	virtual const char *image_brief_type_name() const noexcept override { return m_image_brief ? m_image_brief : device_cartrom_image_interface::image_brief_type_name(); }
+	virtual std::string media_details() const override;
 
 	// device_slot_interface implementation
 	virtual std::string get_default_card_software(get_default_card_software_hook &hook) const override;
@@ -57,6 +58,7 @@ private:
 	optional_address_space m_address_space;
 	const char *m_image_type = nullptr;
 	const char *m_image_brief = nullptr;
+	const char *m_origin = nullptr;  // how the board was told, for the user interface
 
 	static bool detect_snowhite(const uint8_t *cart, uint32_t len);
 	static bool detect_f8_bank1_start(const uint8_t *cart, uint32_t len);
@@ -106,6 +108,9 @@ public:
 	virtual void install_memory_handlers(address_space *space) { }
 
 	virtual void setup_addon_ptr(uint8_t *ptr) { }
+
+	// more about the board than its name, for the user interface
+	virtual std::string board_details() const { return std::string(); }
 
 	void rom_alloc(uint32_t size, const char *tag);
 	void ram_alloc(uint32_t size);

@@ -744,6 +744,10 @@ image.crc (read-only)
     The 32-bit cyclic redundancy check of the content of the mounted image file
     if the mounted media image was not loaded from a software list, is mounted
     read-only and is not a CD-ROM, or zero (0) otherwise.
+image.media_details (read-only)
+    What the mounted media is, as the user interface shows it (for a slot,
+    usually the card the media plugged in), possibly over several lines, or an
+    empty string if there is nothing to say.
 image.loaded_through_softlist (read-only)
     A Boolean indicating whether the mounted media image was loaded from a
     software list, or ``false`` if no media image is mounted.

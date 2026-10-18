@@ -17,6 +17,8 @@
 #include "emu.h"
 #include "vcs_slot.h"
 
+#include "emuopts.h"
+
 #include <algorithm>
 #include <string_view>
 
@@ -246,6 +248,7 @@ std::pair<std::error_condition, std::string> vcs_cart_slot_device::call_load()
 		{
 			memcpy(ROM, get_software_region("rom"), len);
 			const char *pcb_name = get_feature("slot");
+			m_origin = pcb_name ? "board from the software list" : "board told by the size in the software list";
 
 			if (pcb_name != nullptr)
 				m_type = vcs_get_pcb_id(pcb_name);
@@ -270,6 +273,8 @@ std::pair<std::error_condition, std::string> vcs_cart_slot_device::call_load()
 			// the board is the slot option picked by get_default_card_software(), unless
 			// one was given on the command line: allocate the RAM that one needs
 			m_type = vcs_get_pcb_id(m_cart->device().basetag());
+			::slot_option const *const board_option = mconfig().options().find_slot_option(tag() + 1);
+			m_origin = (board_option && board_option->specified()) ? "board given in the options" : "board detected from the image";
 			if (!usual_size && m_type != A26_SS && m_type != A26_3E && m_type != A26_3F && m_type != A26_3EP && m_type != A26_MDM)
 				return std::make_pair(image_error::INVALIDLENGTH, "Unsupported cartridge ROM file size");
 
@@ -305,6 +310,33 @@ std::pair<std::error_condition, std::string> vcs_cart_slot_device::call_load()
 	}
 
 	return std::make_pair(std::error_condition(), std::string());
+}
+
+
+/*-------------------------------------------------
+ media_details - the board, its RAM, and how it
+ was told
+ -------------------------------------------------*/
+
+std::string vcs_cart_slot_device::media_details() const
+{
+	if (!m_cart)
+		return std::string();
+
+	std::string details(device_cartrom_image_interface::media_details());
+	std::string const board(m_cart->board_details());
+	if (!board.empty())
+		details += ", " + board;
+	uint32_t const ram = m_cart->get_ram_size();
+	if (ram)
+	{
+		details += (ram % 0x400) ? util::string_format(", %u bytes of RAM", ram) : util::string_format(", %uK of RAM", ram / 0x400);
+		if (ram == 0x80)
+			details += " (Super Chip)";
+	}
+	if (m_origin)
+		details += util::string_format("\n(%s)", m_origin);
+	return details;
 }
 
 

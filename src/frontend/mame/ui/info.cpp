@@ -25,9 +25,11 @@
 
 #include "util/unicode.h"
 
+#include <algorithm>
 #include <locale>
 #include <set>
 #include <sstream>
+#include <string_view>
 #include <type_traits>
 #include <utility>
 
@@ -728,7 +730,19 @@ void menu_game_info::populate_text(std::optional<text_layout> &layout, float &wi
 									swinfo.year());
 						}
 					}
-					else if (image.has_preset_images_selection())
+					if (image.exists())
+					{
+						// indented under the image, a line at a time
+						std::string const text(image.media_details());
+						std::string_view details(text);
+						while (!details.empty())
+						{
+							auto const end(std::min(details.find('\n'), details.size()));
+							util::stream_format(mediainfo, "    %s\n", details.substr(0, end));
+							details.remove_prefix(std::min(end + 1, details.size()));
+						}
+					}
+					if (!image.user_loadable() && image.has_preset_images_selection())
 					{
 						util::stream_format(mediainfo, _("%1$s (%2$s preset %u)\n"),
 								image.preset_images_list()[image.current_preset_image_id()],

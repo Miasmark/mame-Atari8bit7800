@@ -23,6 +23,7 @@
 
 #include "softlist.h"
 
+#include <algorithm>
 #include <string_view>
 #include <unordered_set>
 #include <utility>
@@ -42,6 +43,7 @@ menu_file_manager::menu_file_manager(mame_ui_manager &mui, render_target &target
 	: menu(mui, target)
 	, m_warnings(std::move(warnings))
 	, m_selected_device(nullptr)
+	, m_footer_space(3)
 {
 	// The warning string is used when accessing from the force_file_manager call, i.e.
 	// when the file manager is loaded top front in the case of mandatory image devices
@@ -73,13 +75,85 @@ void menu_file_manager::recompute_metrics(uint32_t width, uint32_t height, float
 		float const max_width(1.0F - (4.0F * lr_border()));
 		m_warnings_layout.emplace(create_layout(max_width, text_layout::text_justify::LEFT));
 		m_warnings_layout->add_text(m_warnings, ui().colors().text_color());
+	}
 
-		set_custom_space(0.0F, (float(m_warnings_layout->lines() + 3) * line_height()) + (6.0F * tb_border()));
+	update_footer();
+}
+
+
+//-------------------------------------------------
+//  footer_lines - what is shown under the menu
+//  for an image: its file or software, and what
+//  the media is
+//-------------------------------------------------
+
+std::vector<std::string> menu_file_manager::footer_lines(device_image_interface &img)
+{
+	std::vector<std::string> lines;
+	if (!img.exists())
+		return lines;
+
+	if (img.has_preset_images_selection())
+	{
+		lines.emplace_back(util::string_format(_("%1$s preset %2$u"), img.filename(), img.current_preset_image_id() + 1));
+	}
+	else if (!img.loaded_through_softlist())
+	{
+		lines.emplace_back(img.filename());
 	}
 	else
 	{
-		set_custom_space(0.0F, (3.0F * line_height()) + (3.0F * tb_border()));
+		software_info const &swinfo(*img.software_entry());
+		lines.emplace_back(swinfo.longname());
+		lines.emplace_back(util::string_format(_("%1$s, %2$s"), swinfo.publisher(), swinfo.year()));
+		switch (swinfo.supported())
+		{
+		case software_support::UNSUPPORTED:
+			lines.emplace_back(_("Not supported"));
+			break;
+		case software_support::PARTIALLY_SUPPORTED:
+			lines.emplace_back(_("Partially supported"));
+			break;
+		case software_support::SUPPORTED:
+			break;
+		}
 	}
+
+	// a line at a time
+	std::string const details(img.media_details());
+	std::string_view rest(details);
+	while (!rest.empty())
+	{
+		auto const end(std::min(rest.find('\n'), rest.size()));
+		lines.emplace_back(rest.substr(0, end));
+		rest.remove_prefix(std::min(end + 1, rest.size()));
+	}
+	return lines;
+}
+
+
+//-------------------------------------------------
+//  update_footer - take the footer of the selected
+//  image, and keep the space for the biggest one
+//-------------------------------------------------
+
+void menu_file_manager::update_footer()
+{
+	m_footer = m_selected_device ? footer_lines(*m_selected_device) : std::vector<std::string>();
+
+	unsigned space = 3;
+	for (device_image_interface &img : image_interface_enumerator(machine().root_device()))
+	{
+		if (img.has_preset_images_selection() || img.user_loadable())
+			space = std::max<unsigned>(space, footer_lines(img).size());
+	}
+	m_footer_space = space;
+
+	float const footer((float(space) * line_height()) + (3.0F * tb_border()));
+	if (m_warnings_layout)
+		set_custom_space(0.0F, footer + (float(m_warnings_layout->lines()) * line_height()) + (3.0F * tb_border()));
+	else
+		set_custom_space(0.0F, footer);
 }
 
 
@@ -89,62 +163,36 @@ void menu_file_manager::recompute_metrics(uint32_t width, uint32_t height, float
 
 void menu_file_manager::custom_render(uint32_t flags, void *selectedref, float top, float bottom, float origx1, float origy1, float origx2, float origy2)
 {
-	// access the path
-	if (m_selected_device && m_selected_device->exists())
+	// the path or software, and what the media is: wider than the menu if need be, up to the
+	// width of the screen, and shrunk to fit past that
+	if (!m_footer.empty())
 	{
-		if (m_selected_device->has_preset_images_selection())
-		{
-			extra_text_render(
-					top, (3.0F * tb_border()) + line_height(), origx1, origy1, origx2, origy2,
-					std::string_view(),
-					util::string_format(_("%1$s preset %2$u"), m_selected_device->filename(), m_selected_device->current_preset_image_id() + 1));
-		}
-		else if (!m_selected_device->loaded_through_softlist())
-		{
-			extra_text_render(
-					top, (3.0F * tb_border()) + line_height(), origx1, origy1, origx2, origy2,
-					std::string_view(),
-					m_selected_device->filename());
-		}
-		else
-		{
-			software_info const &swinfo(*m_selected_device->software_entry());
-			unsigned const lines((swinfo.supported() == software_support::SUPPORTED) ? 2 : 3);
-			std::string const line2(util::string_format(_("%1$s, %2$s"), swinfo.publisher(), swinfo.year()));
-			std::string_view text[3];
-			text[0] = swinfo.longname();
-			text[1] = line2;
-			switch (swinfo.supported())
-			{
-			case software_support::UNSUPPORTED:
-				text[2] = _("Not supported");
-				break;
-			case software_support::PARTIALLY_SUPPORTED:
-				text[2] = _("Partially supported");
-				break;
-			case software_support::SUPPORTED:
-				break;
-			}
-			draw_text_box(
-					std::begin(text), std::next(std::begin(text), lines),
-					origx1, origx2, origy2 + tb_border(), origy2 + (lines * line_height()) + (3.0F * tb_border()),
-					text_layout::text_justify::CENTER, text_layout::word_wrapping::NEVER, false,
-					ui().colors().text_color(), ui().colors().background_color());
-		}
+		float width(0.0F);
+		for (std::string const &line : m_footer)
+			width = std::max(width, get_string_width(line));
+		width = std::min(width, 1.0F - (4.0F * lr_border()));
+		float const x1(std::min(origx1, 0.5F - (width * 0.5F) - lr_border()));
+		float const x2(std::max(origx2, 0.5F + (width * 0.5F) + lr_border()));
+		draw_text_box(
+				m_footer.begin(), m_footer.end(),
+				x1, x2, origy2 + tb_border(), origy2 + (m_footer.size() * line_height()) + (3.0F * tb_border()),
+				text_layout::text_justify::CENTER, text_layout::word_wrapping::NEVER, true,
+				ui().colors().text_color(), ui().colors().background_color());
 	}
 
-	// show the warnings if any
+	// show the warnings if any, below the space of the footer
 	if (m_warnings_layout)
 	{
+		float const warnings_top(origy2 + (float(m_footer_space) * line_height()) + (4.0F * tb_border()));
 		ui().draw_outlined_box(
 				container(),
-				((1.0F + m_warnings_layout->actual_width()) * 0.5F) + lr_border(), origy2 + (4.0F * tb_border()) + line_height(),
+				((1.0F + m_warnings_layout->actual_width()) * 0.5F) + lr_border(), warnings_top,
 				((1.0F - m_warnings_layout->actual_width()) * 0.5F) - lr_border(), origy2 + bottom,
 				ui().colors().background_color());
 		m_warnings_layout->emit(
 				container(),
 				(1.0F - m_warnings_layout->actual_width()) * 0.5F,
-				origy2 + (5.0F * tb_border()) + line_height());
+				warnings_top + tb_border());
 	}
 
 }
@@ -210,6 +258,7 @@ void menu_file_manager::populate()
 						[this, index, &scan] (device_image_interface::media_change_event ev)
 						{
 							item(index).set_subtext(scan.preset_images_list()[scan.current_preset_image_id()]);
+							update_footer();
 						}));
 			}
 			else if (scan.user_loadable())
@@ -226,6 +275,7 @@ void menu_file_manager::populate()
 							std::string text, subtext;
 							fill_image_line(scan, text, subtext);
 							item(index).set_subtext(std::move(subtext));
+							update_footer();
 						}));
 			}
 		}
@@ -252,6 +302,7 @@ bool menu_file_manager::handle(event const *ev)
 			if (m_selected_device)
 			{
 				m_selected_device = nullptr;
+				update_footer();
 				result = true;
 			}
 
@@ -263,6 +314,7 @@ bool menu_file_manager::handle(event const *ev)
 			if (ev->itemref != m_selected_device)
 			{
 				m_selected_device = (device_image_interface *)ev->itemref;
+				update_footer();
 				result = true;
 			}
 
@@ -289,6 +341,7 @@ bool menu_file_manager::handle(event const *ev)
 		if (selected && (uintptr_t(selected) != 1) && (selected != m_selected_device))
 		{
 			m_selected_device = (device_image_interface *)selected;
+			update_footer();
 			result = true;
 		}
 	}
