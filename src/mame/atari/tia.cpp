@@ -396,7 +396,6 @@ tia_video_device::tia_video_device(const machine_config &mconfig, device_type ty
 	, m_maincpu(*this, "^maincpu")
 	, m_tia(*this, finder_base::DUMMY_TAG)
 	, m_config(*this, "CONFIG")
-	, m_palette_choice(atari_tuccitto::WARM)
 {
 }
 
@@ -451,6 +450,8 @@ tia_ntsc_video_device::tia_ntsc_video_device(const machine_config &mconfig, cons
 
 void tia_video_device::device_start()
 {
+	// the default; the Palette setting is followed from the first frame on
+	m_palette_choice = atari_tuccitto::WARM;
 	init_palette();
 
 	int cx = screen().width();
