@@ -190,12 +190,27 @@ public:
 
 // ======================> a26_rom_fa2_device
 
-class a26_rom_fa2_device : public a26_rom_f6_device
+class a26_rom_fa2_device : public a26_rom_f6_device, public device_nvram_interface
 {
 public:
 	a26_rom_fa2_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
 
 	virtual void install_memory_handlers(address_space *space) override;
+
+protected:
+	virtual void device_start() override ATTR_COLD;
+
+	// device_nvram_interface implementation
+	virtual void nvram_default() override;
+	virtual bool nvram_read(util::read_stream &file) override;
+	virtual bool nvram_write(util::write_stream &file) override;
+	virtual bool nvram_can_write() const override { return m_flash_saved; }
+
+private:
+	void flash_access();
+
+	uint8_t m_flash[0x100];  // the Harmony's copy of the RAM
+	bool m_flash_saved;      // false until the game first saves
 };
 
 

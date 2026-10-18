@@ -406,10 +406,13 @@ void a26_rom_fa_device::install_memory_handlers(address_space *space)
  Images come as 24K or 28K of banks, or with the
  Harmony's 1K ARM driver in front of them (29K, or
  32K padded): the driver is skipped.
- Accessing 0x1ff4 asks the Harmony to load or save
- the RAM from/to its flash; bit 6 of the value read
- there tells whether it is still busy. Saving is not
- emulated: the operation always reads as done.
+ Accessing 0x1ff4 asks the Harmony to load (RAM byte
+ 0xff = 1) or save (2) the RAM from/to its flash; bit 6
+ of the value read there tells whether it is still
+ busy, and the game waits for it running from the
+ console's RAM. Here the operation is done at once,
+ and the flash is kept in the nvram folder; a load
+ before the first save leaves the RAM as it is.
 
  GAMES: Star Castle Arcade (homebrew)
 
@@ -417,7 +420,55 @@ void a26_rom_fa_device::install_memory_handlers(address_space *space)
 
 a26_rom_fa2_device::a26_rom_fa2_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
 	: a26_rom_f6_device(mconfig, A26_ROM_FA2, tag, owner, clock)
+	, device_nvram_interface(mconfig, *this)
+	, m_flash{ }
+	, m_flash_saved(false)
 {
+}
+
+void a26_rom_fa2_device::device_start()
+{
+	a26_rom_f6_device::device_start();
+
+	save_item(NAME(m_flash));
+	save_item(NAME(m_flash_saved));
+}
+
+void a26_rom_fa2_device::nvram_default()
+{
+	std::fill(std::begin(m_flash), std::end(m_flash), 0);
+	m_flash_saved = false;
+}
+
+bool a26_rom_fa2_device::nvram_read(util::read_stream &file)
+{
+	auto const [err, actual] = read(file, m_flash, sizeof(m_flash));
+	m_flash_saved = !err && (actual == sizeof(m_flash));
+	return m_flash_saved;
+}
+
+bool a26_rom_fa2_device::nvram_write(util::write_stream &file)
+{
+	auto const [err, actual] = write(file, m_flash, sizeof(m_flash));
+	return !err;
+}
+
+void a26_rom_fa2_device::flash_access()
+{
+	if (machine().side_effects_disabled() || !is_ram_present(0x100))
+		return;
+
+	switch (m_ram[0xff])
+	{
+	case 1:
+		if (m_flash_saved)
+			std::copy_n(m_flash, sizeof(m_flash), &m_ram[0]);
+		break;
+	case 2:
+		std::copy_n(&m_ram[0], sizeof(m_flash), m_flash);
+		m_flash_saved = true;
+		break;
+	}
 }
 
 void a26_rom_fa2_device::install_memory_handlers(address_space *space)
@@ -433,9 +484,11 @@ void a26_rom_fa2_device::install_memory_handlers(address_space *space)
 			[this] (offs_t address, u8 &, u8) { if (!machine().side_effects_disabled()) switch_bank(address - 0x1ff5, 0); });
 	space->install_read_handler(0x1100, 0x11ff, read8sm_delegate(*this, FUNC(a26_rom_fa2_device::read_ram)));
 	space->install_write_handler(0x1000, 0x10ff, write8sm_delegate(*this, FUNC(a26_rom_fa2_device::write_ram)));
-	// flash load/save of the RAM: never busy
+	// flash load/save of the RAM, done at once: never busy
 	space->install_read_tap(0x1ff4, 0x1ff4, "flash",
-			[] (offs_t, u8 &data, u8) { data &= ~0x40; });
+			[this] (offs_t, u8 &data, u8) { flash_access(); data &= ~0x40; });
+	space->install_write_tap(0x1ff4, 0x1ff4, "flash_w",
+			[this] (offs_t, u8 &, u8) { flash_access(); });
 }
 
 
