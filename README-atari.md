@@ -18,6 +18,14 @@ runs on and how that was found. For example:
 
 Lua scripts can read the same text as `image.media_details`.
 
+## Colours (2600 and 7800)
+
+Both consoles now use Robert Tuccitto's measured palettes, the ones the MiSTer and Analogue
+Pocket 7800 cores use. The 7800's colours drift as the console warms up, so there are three
+(Machine Configuration, **Palette**): Warm (default, 26.7 degrees a hue step), Cool (25.7), Hot
+(27.7), or MAME 0.289 for the palettes MAME had before. One setting covers the 7800 and its 2600
+mode. With Warm, every colour matches the Pocket core's own screenshots of a colour test cartridge.
+
 ## Atari 7800 (`a7800`, `a7800p`)
 
 - **One cartridge slot for everything.** The Cartridge slot (File Manager, `-cart`) takes `.a78`,
