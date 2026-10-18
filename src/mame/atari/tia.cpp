@@ -8,6 +8,9 @@
 
 #include "emu.h"
 #include "tia.h"
+
+#include "tuccitto_pal.h"
+
 #include "screen.h"
 
 static const int nusiz[8][3] =
@@ -46,8 +49,33 @@ void tia_video_device::extend_palette()
 	}
 }
 
+// the palette the Palette setting picks, when it is not the original one
+u8 tia_video_device::palette_choice() const
+{
+	return (m_config->read() >> 1) & 3;
+}
+
+void tia_video_device::update_palette()
+{
+	u8 const choice = palette_choice();
+	if (choice != m_palette_choice)
+	{
+		m_palette_choice = choice;
+		init_palette();
+	}
+}
+
 void tia_ntsc_video_device::init_palette()
 {
+	// Tuccitto's measured 7800 palette: the 2600's colour byte picks the same entry
+	if (m_palette_choice != atari_tuccitto::ORIGINAL)
+	{
+		for (int i = 0; i < 128; i++)
+			set_pen_color(i, atari_tuccitto::ntsc[m_palette_choice][i << 1]);
+		extend_palette();
+		return;
+	}
+
 	/********************************************************************
 	Atari 2600 NTSC Palette Notes:
 
@@ -294,6 +322,15 @@ void tia_ntsc_video_device::init_palette()
 
 void tia_pal_video_device::init_palette()
 {
+	// Tuccitto's measured 7800 PAL palette, under the 7800's number for each 2600 hue
+	if (m_palette_choice != atari_tuccitto::ORIGINAL)
+	{
+		for (int i = 0; i < 128; i++)
+			set_pen_color(i, atari_tuccitto::pal[m_palette_choice][(atari_tuccitto::pal_2600_hue[i >> 3] << 4) | ((i & 7) << 1)]);
+		extend_palette();
+		return;
+	}
+
 	static constexpr double color[16][2] =
 	{
 		{  0.000,  0.000 },
@@ -359,6 +396,7 @@ tia_video_device::tia_video_device(const machine_config &mconfig, device_type ty
 	, m_maincpu(*this, "^maincpu")
 	, m_tia(*this, finder_base::DUMMY_TAG)
 	, m_config(*this, "CONFIG")
+	, m_palette_choice(atari_tuccitto::WARM)
 {
 }
 
@@ -370,6 +408,12 @@ static INPUT_PORTS_START( tia_video )
 	PORT_CONFNAME( 0x01, 0x01, "Frame Blending" )
 	PORT_CONFSETTING(    0x00, DEF_STR( Off ) )
 	PORT_CONFSETTING(    0x01, DEF_STR( On ) )
+	// Robert Tuccitto's palettes, measured at three console temperatures (see tuccitto_pal.h)
+	PORT_CONFNAME( 0x06, 0x00, "Palette" )
+	PORT_CONFSETTING(    0x00, "Warm (26.7 degrees)" )
+	PORT_CONFSETTING(    0x02, "Cool (25.7 degrees)" )
+	PORT_CONFSETTING(    0x04, "Hot (27.7 degrees)" )
+	PORT_CONFSETTING(    0x06, "MAME 0.289" )
 INPUT_PORTS_END
 
 ioport_constructor tia_video_device::device_input_ports() const
@@ -966,6 +1010,7 @@ void tia_video_device::update_bitmap(int next_x, int next_y)
 		}
 
 		if ( x2 == 160 && y % screen_height == (screen_height - 1) ) {
+			update_palette();
 			bool const blend = BIT(m_config->read(), 0);
 			for ( int t_y = 0; t_y < buffer.height(); t_y++ ) {
 				uint16_t* l0 = &helper[current_bitmap].pix(t_y);

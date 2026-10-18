@@ -102,6 +102,7 @@
 
 #include "maria.h"
 #include "tia.h"
+#include "tuccitto_pal.h"
 
 #include "bus/a7800/a78_carts.h"
 #include "bus/vcs/vcs_carts.h"
@@ -164,6 +165,7 @@ protected:
 	uint8_t bankram_window_r(offs_t offset);
 	void tia_w(offs_t offset, uint8_t data);
 	virtual void a7800_palette(palette_device &palette) const ATTR_COLD;
+	void update_palette();
 	TIMER_DEVICE_CALLBACK_MEMBER(interrupt);
 	TIMER_CALLBACK_MEMBER(maria_startvisible);
 	TIMER_CALLBACK_MEMBER(maria_startdma);
@@ -211,6 +213,7 @@ protected:
 	emu_timer *m_visible_timer = nullptr;
 	int m_pixelx = 0;
 	bool m_cart_ram_exec_warned = false;
+	uint8_t m_palette_choice = 0xff;  // the palette the pens hold (the TIA's Palette setting)
 	uint8_t m_skip_bios = 0;        // the -bios number of "skip" on this machine
 	bool m_no_bios = false;         // running without a BIOS: -bios skip, or the BIOS's file is missing
 	uint32_t m_clock = 0;           // the master clock (14.32 MHz NTSC, 14.19 MHz PAL)
@@ -586,6 +589,7 @@ uint32_t a7800_state::screen_update(screen_device &screen, bitmap_rgb32 &bitmap,
 		return m_tia_video->screen_update(screen, bitmap, cliprect);
 
 	m_maria->screen_update(screen, m_maria_bitmap, cliprect);
+	update_palette();
 	pen_t const *const pens = m_palette->pens();
 	for (int y = cliprect.min_y; y <= cliprect.max_y; y++)
 	{
@@ -1643,6 +1647,19 @@ define NTSC_LIGHT_ORANGE
     rgb_t(0xBB,0x7C,0x2F), rgb_t(0xCC,0x8D,0x40), rgb_t(0xDD,0x9E,0x51), rgb_t(0xEE,0xAF,0x62), \
     rgb_t(0xFF,0xC0,0x73), rgb_t(0xFF,0xD1,0x89), rgb_t(0xFF,0xE2,0x9F), rgb_t(0xFF,0xF3,0xB5   )
 ***************************************************************************/
+
+// The Palette setting is the TIA's, so that one setting covers 2600 mode too
+void a7800_state::update_palette()
+{
+	uint8_t const choice = m_tia_video->palette_choice();
+	if (choice == m_palette_choice)
+		return;
+	m_palette_choice = choice;
+	if (choice == atari_tuccitto::ORIGINAL)
+		m_palette->set_pen_colors(0, m_ispal ? a7800p_colors : a7800_colors, 256);
+	else
+		m_palette->set_pen_colors(0, m_ispal ? atari_tuccitto::pal[choice] : atari_tuccitto::ntsc[choice], 256);
+}
 
 /* Initialise the palette */
 void a7800_state::a7800_palette(palette_device &palette) const
