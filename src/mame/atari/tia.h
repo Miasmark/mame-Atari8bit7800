@@ -54,6 +54,9 @@ public:
 	// sees the beam (or the glow it just left) drawing a bright part of the picture
 	bool light_sensor(int x, int y);
 
+	// the Palette setting (atari_tuccitto::WARM ... ORIGINAL), which the 7800 follows too
+	u8 palette_choice() const;
+
 protected:
 	// construction/destruction
 	tia_video_device(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, uint32_t clock);
@@ -70,6 +73,9 @@ protected:
 
 	void extend_palette();
 	virtual void init_palette() = 0;
+	void update_palette();
+
+	u8 m_palette_choice;    // the palette the pens hold
 	void draw_sprite_helper(uint8_t* p, uint8_t *col, struct player_gfx *gfx, uint8_t GRP, uint8_t COLUP, uint8_t REFP);
 	void draw_missile_helper(uint8_t* p, uint8_t* col, int horz, int skipdelay, int latch, int start, uint8_t RESMP, uint8_t ENAM, uint8_t NUSIZ, uint8_t COLUM);
 	void draw_playfield_helper(uint8_t* p, uint8_t* col, int horz, uint8_t COLU, uint8_t REFPF);
