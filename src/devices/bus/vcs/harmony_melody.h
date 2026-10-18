@@ -47,6 +47,7 @@ public:
 	a26_rom_harmony_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
 
 	virtual void install_memory_handlers(address_space *space) override;
+	virtual std::string board_details() const override;
 
 protected:
 	virtual void device_start() override ATTR_COLD;

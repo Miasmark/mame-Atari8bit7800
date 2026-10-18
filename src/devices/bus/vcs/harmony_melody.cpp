@@ -328,6 +328,19 @@ void a26_rom_harmony_device::device_start()
 	save_item(NAME(m_timer1_base));
 }
 
+// the driver the image runs on the ARM
+std::string a26_rom_harmony_device::board_details() const
+{
+	switch (m_format)
+	{
+	case FORMAT_DPCP:  return "DPC+ driver";
+	case FORMAT_CDF:   return "CDF driver";
+	case FORMAT_CDFJ:  return "CDFJ driver";
+	case FORMAT_CDFJP: return "CDFJ+ driver";
+	default:           return "ARM driver not known";
+	}
+}
+
 void a26_rom_harmony_device::install_memory_handlers(address_space *space)
 {
 	// the 6507 owning the space (the 2600), or a 2600 bus on a machine whose CPU is elsewhere

@@ -2061,6 +2061,7 @@ void lua_engine::initialize()
 	image_type["readonly"] = sol::property(&device_image_interface::is_readonly);
 	image_type["filename"] = sol::property(&device_image_interface::filename);
 	image_type["crc"] = sol::property(&device_image_interface::crc);
+	image_type["media_details"] = sol::property(&device_image_interface::media_details);
 	image_type["loaded_through_softlist"] = sol::property(&device_image_interface::loaded_through_softlist);
 	image_type["software_list_name"] = sol::property(&device_image_interface::software_list_name);
 	image_type["software_longname"] = sol::property(

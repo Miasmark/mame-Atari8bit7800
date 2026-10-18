@@ -126,6 +126,9 @@ a78_cart_slot_device::a78_cart_slot_device(const machine_config &mconfig, const 
 	, m_type(0)
 	, m_vcs_image(nullptr)
 	, m_savekey(false)
+	, m_hsc_save(false)
+	, m_expansion(false)
+	, m_origin(nullptr)
 {
 }
 
@@ -509,6 +512,9 @@ static const char *a78_get_slot(int type)
 
 std::pair<std::error_condition, std::string> a78_cart_slot_device::call_load()
 {
+	m_savekey = m_hsc_save = m_expansion = false;
+	m_origin = nullptr;
+
 	// without a board, the image is a 2600 one that the 2600 cartridge slot loads
 	if (m_cart)
 	{
@@ -528,6 +534,7 @@ std::pair<std::error_condition, std::string> a78_cart_slot_device::call_load()
 				m_type = a78_get_pcb_id(pcb_name);
 			else
 				m_type = A78_TYPE0;
+			m_origin = "board from the software list";
 
 			if (has_ram)
 				m_cart->ram_alloc(get_software_region_length("ram"));
@@ -559,6 +566,12 @@ std::pair<std::error_condition, std::string> a78_cart_slot_device::call_load()
 					return std::make_pair(image_error::INVALIDIMAGE, "A 7800 image of this size needs its .a78 header to say what board it is on");
 
 				m_type = type;
+				if (is_hsc_image(&data[0], len))
+					m_origin = "the High Score Cart's own ROM";
+				else if (softlist_type(&data[0], len) >= 0)
+					m_origin = "no header, board from the software list";
+				else
+					m_origin = "no header, board detected from the image";
 				logerror("Image without a header: cart type 0x%x\n", m_type);
 				m_cart->rom_alloc(len);
 				memcpy(m_cart->get_rom_base(), &data[0], len);
@@ -627,7 +640,9 @@ std::pair<std::error_condition, std::string> a78_cart_slot_device::call_load()
 
 
 			logerror("Cart type: 0x%x\n", m_type);
+			m_origin = "board from the .a78 header";
 
+			m_hsc_save = BIT(head[58], 0);
 			if (head[58] == 1)
 			{
 				osd_printf_info("This cart supports external NVRAM using HSC.\n");
@@ -641,6 +656,7 @@ std::pair<std::error_condition, std::string> a78_cart_slot_device::call_load()
 				osd_printf_info("It is plugged in there unless Machine Configuration says otherwise.\n");
 			}
 
+			m_expansion = head[63] != 0;
 			if (head[63])
 			{
 				osd_printf_info("This cart requires XBoarD / XM expansion\n");
@@ -654,7 +670,10 @@ std::pair<std::error_condition, std::string> a78_cart_slot_device::call_load()
 
 			// the High Score Cartridge's own image: its header says nothing of it
 			if (is_hsc_image(m_cart->get_rom_base(), len))
+			{
 				m_type = A78_HSC;
+				m_origin = "the High Score Cart's own ROM";
+			}
 
 			if (m_type == A78_ACTIVISION)
 				activision_eprom_order(m_cart->get_rom_base(), len);
@@ -686,6 +705,32 @@ void a78_cart_slot_device::alloc_board_memory()
 		m_cart->nvram_alloc(0x800);
 		battery_load(m_cart->get_nvram_base(), 0x800, 0xff);
 	}
+}
+
+
+/*-------------------------------------------------
+ media_details - the board, and how it was told
+ -------------------------------------------------*/
+
+std::string a78_cart_slot_device::media_details() const
+{
+	if (!m_cart)
+		return "2600 cartridge: it runs in the 2600 cartridge slot (cart2600)";
+
+	std::string details(device_cartrom_image_interface::media_details());
+	std::string notes(m_origin ? m_origin : "");
+	auto const note = [&notes] (const char *text) { if (!notes.empty()) notes += ", "; notes += text; };
+	if (m_hsc_save && m_savekey)
+		note("saves to the High Score Cart or a SaveKey in port 2");
+	else if (m_hsc_save)
+		note("saves to the High Score Cart");
+	else if (m_savekey)
+		note("saves to a SaveKey in port 2");
+	if (m_expansion)
+		note("uses the XBoarD or XM");
+	if (!notes.empty())
+		details += "\n(" + notes + ")";
+	return details;
 }
 
 

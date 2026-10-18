@@ -136,6 +136,7 @@ public:
 	virtual const char *image_interface() const noexcept override { return "a7800_cart"; }
 	virtual const char *file_extensions() const noexcept override { return "a78,bin,a26"; }
 	virtual u32 unhashed_header_length() const noexcept override { return 128; }
+	virtual std::string media_details() const override;
 
 	// device_slot_interface implementation
 	virtual std::string get_default_card_software(get_default_card_software_hook &hook) const override;
@@ -176,6 +177,9 @@ private:
 	int m_type;
 	const char *m_vcs_image;
 	bool m_savekey;
+	bool m_hsc_save;     // the header says it saves to the High Score Cart
+	bool m_expansion;    // the header asks for the XBoarD or XM
+	const char *m_origin; // how the board was told, for the user interface
 	static std::string s_vcs_forwarded;
 };
 
