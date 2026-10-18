@@ -9,7 +9,14 @@ change is its own commit with a description of what was measured.
 
 ## Atari 7800 (`a7800`, `a7800p`)
 
-- **2600 mode.** A 2600 cartridge (`-cart2600 game.a26`) runs as on a real 7800. The BIOS finds it,
+- **One cartridge slot for everything.** The Cartridge slot (File Manager, `-cart`) takes `.a78`,
+  `.bin` and `.a26` files:
+  - a 2600 game is passed to the 2600 slot and runs in 2600 mode (`-cart2600` still works too);
+  - a 7800 image without its header is recognised: known dumps from the software list (with their
+    exact board), others by the 7800 BIOS's own cartridge check, mapped flat up to 48K or as a 128K
+    or 144K SuperGame board;
+  - the Software menu also lists the 2600 software list (`a2600:name` on the command line).
+- **2600 mode.** A 2600 cartridge runs as on a real 7800. The BIOS finds it,
   runs its 2600 bootstrap and locks INPTCTRL with MARIA off. From then on:
   - the TIA draws the screen;
   - the CPU and the RIOT run at 1.19 MHz;
@@ -21,6 +28,8 @@ change is its own commit with a description of what was measured.
     9 keep identical RAM; `a2600` uses a 3.579575 MHz clock, the 7800 its own 3.579545 MHz crystal.
   - **Through 7800OpenBIOS:** all 16 games tested boot into their attract modes.
   - **Soft reset and save states** work.
+  - **Known limit:** Harmony ARM games (DPC+, CDF) stay on a black screen when started through a
+    BIOS: its 7800-mode cartridge check reads `$FFF8`, which switches their bank. Use `-bios skip`.
 - **BankSet cartridges**, all 11 forms (CPU half and MARIA half, BankSet RAM, 52K halves, POKEY at
   `$4000` or `$0800`), plus the spec's rules: display lists must be in console RAM, and no code may
   run from cart RAM.
@@ -29,9 +38,19 @@ change is its own commit with a description of what was measured.
 - **MARIA timing from the 7800-devtools a7800 fork**, with MARIA's DMA in its own address space, so
   debugger and Lua watches can tell its reads from the CPU's.
 - **`-bios skip`** boots straight into the cartridge, with no BIOS file needed.
+- **High Score Cartridge from its own image:** `-cart "High Score Cartridge.a78" -cart2 game.a78`
+  (the software list entry `hiscore` works as before). Its scores are saved in the nvram folder.
+- **SaveKey / AtariVox memory in controller port 2** (Machine Configuration, Controller Port 2):
+  Auto plugs one in when the cartridge's header asks for it; Joystick or SaveKey force the choice.
+  It also works in 2600 mode. The AtariVox's speech is not emulated. Like all MAME nvram, its file is
+  kept per BIOS choice (`nvram/a7800/` with the default BIOS, `nvram/a7800_2/` with `-bios skip`).
 
 ## Atari 2600 (`a2600`, `a2600p`)
 
+- **SaveKey / AtariVox memory** for a controller port: `-joyport2 savekey` (or Slot Devices in the
+  menu). The 32K EEPROM is kept in the nvram folder, shared by all games as a real one is.
+- **FA2 (Star Castle Arcade) saves** its Hall of Fame to the Harmony's flash, kept in the nvram
+  folder.
 - **Frame Blending setting** (Machine Configuration menu, on by default; also used by the 7800's
   2600 mode). MAME blends each frame with the one before so flickering sprites look steady; turn it
   off to see each frame as drawn, e.g. for a sprite that changes every frame.
