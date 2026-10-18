@@ -108,6 +108,7 @@
 #include "bus/vcs/vcs_slot.h"
 #include "cpu/m6502/m6502.h"
 #include "machine/bankdev.h"
+#include "machine/i2cmem.h"
 #include "machine/mos6530.h"
 #include "machine/timer.h"
 #include "sound/tiaintf.h"
@@ -132,6 +133,8 @@ public:
 		m_io_joysticks(*this, "JOYSTICKS"),
 		m_io_buttons(*this, "BUTTONS"),
 		m_io_console_buttons(*this, "CONSOLE"),
+		m_io_port2(*this, "PORT2"),
+		m_savekey(*this, "savekey"),
 		m_cart(*this, "cartslot"),
 		m_screen(*this, "screen"),
 		m_palette(*this, "palette"),
@@ -164,6 +167,8 @@ protected:
 	bool has_7800_cart() { return m_cart->exists() && m_cart->has_cart(); }
 
 	uint8_t riot_joystick_r();
+	void riot_joystick_w(uint8_t data);
+	bool savekey_in_port2();
 	uint8_t riot_console_button_r();
 	void riot_button_pullup_w(uint8_t data);
 	void dma_wait_cb(uint64_t data);
@@ -195,6 +200,8 @@ protected:
 	bool m_maria_flag = false;
 	bool m_p1_one_button = true;
 	bool m_p2_one_button = true;
+	int m_savekey_scl = 1;          // the SaveKey lines as the RIOT drives them (1: let go)
+	int m_savekey_sda = 1;
 
 	emu_timer *m_dma_start_timer = nullptr;
 	emu_timer *m_visible_timer = nullptr;
@@ -216,6 +223,8 @@ protected:
 	required_ioport m_io_joysticks;
 	required_ioport m_io_buttons;
 	required_ioport m_io_console_buttons;
+	required_ioport m_io_port2;
+	required_device<i2cmem_device> m_savekey;
 	required_device<a78_cart_slot_device> m_cart;
 	required_device<screen_device> m_screen;
 	required_device<palette_device> m_palette;
@@ -254,7 +263,45 @@ protected:
 // RIOT
 uint8_t a7800_state::riot_joystick_r()
 {
-	return m_io_joysticks->read();
+	uint8_t data = m_io_joysticks->read();
+
+	// a SaveKey in port 2: SDA on pin 3, low when the console or the EEPROM holds it low, and SCL
+	// on pin 4 as the console drives it
+	if (savekey_in_port2())
+		data = (data & 0xf0) | 0x03 | (m_savekey_scl << 3) | ((m_savekey_sda && m_savekey->read_sda()) << 2);
+	return data;
+}
+
+// port A as the RIOT drives it: a pin that is an input reads as 1 here, and lets its line go
+void a7800_state::riot_joystick_w(uint8_t data)
+{
+	int const scl = BIT(data, 3);
+	int const sda = BIT(data, 2);
+
+	if (savekey_in_port2())
+	{
+		// data changes while the clock is low; a change of SDA with the clock high is a start or a stop
+		if (scl != m_savekey_scl && !scl)
+			m_savekey->write_scl(0);
+		if (sda != m_savekey_sda)
+			m_savekey->write_sda(sda);
+		if (scl != m_savekey_scl && scl)
+			m_savekey->write_scl(1);
+	}
+	m_savekey_scl = scl;
+	m_savekey_sda = sda;
+}
+
+// a SaveKey (or an AtariVox, whose speech chip is not emulated) in controller port 2 instead of a
+// joystick: as set in the Machine Configuration, or, on Auto, when the cartridge's header asks for one
+bool a7800_state::savekey_in_port2()
+{
+	switch (m_io_port2->read())
+	{
+	case 1:  return false;
+	case 2:  return true;
+	default: return has_7800_cart() && m_cart->wants_savekey();
+	}
 }
 
 uint8_t a7800_state::riot_console_button_r()
@@ -624,6 +671,12 @@ static INPUT_PORTS_START( a7800 )
 	PORT_BIT(0x04, IP_ACTIVE_HIGH, IPT_BUTTON1)       PORT_PLAYER(2)
 	PORT_BIT(0x08, IP_ACTIVE_HIGH, IPT_BUTTON1)       PORT_PLAYER(1)
 	PORT_BIT(0xf0, IP_ACTIVE_LOW, IPT_UNUSED)
+
+	PORT_START("PORT2")
+	PORT_CONFNAME(0x03, 0x00, "Controller Port 2")
+	PORT_CONFSETTING(0x00, "Auto (SaveKey if the cartridge asks for one)")
+	PORT_CONFSETTING(0x01, "Joystick")
+	PORT_CONFSETTING(0x02, "SaveKey / AtariVox")
 
 	PORT_START("CONSOLE")
 	PORT_BIT(0x01, IP_ACTIVE_LOW, IPT_OTHER)  PORT_NAME("Reset")         PORT_CODE(KEYCODE_U)
@@ -1606,6 +1659,8 @@ void a7800_pal_state::a7800_palette(palette_device &palette) const
 void a7800_state::machine_start()
 {
 	save_item(NAME(m_p1_one_button));
+	save_item(NAME(m_savekey_scl));
+	save_item(NAME(m_savekey_sda));
 	save_item(NAME(m_p2_one_button));
 	save_item(NAME(m_ctrl_lock));
 	save_item(NAME(m_ctrl_reg));
@@ -1703,6 +1758,11 @@ void a7800_state::machine_start()
 
 void a7800_state::machine_reset()
 {
+	// the RIOT lets the SaveKey lines go on reset; the EEPROM has to see them high before a start
+	m_savekey_scl = m_savekey_sda = 1;
+	m_savekey->write_sda(1);
+	m_savekey->write_scl(1);
+
 	m_ctrl_lock = false;
 	m_ctrl_reg = 0;
 	m_maria_flag = false;
@@ -1776,10 +1836,12 @@ void a7800_state::a7800_common(machine_config &config, uint32_t clock)
 	// devices
 	MOS6532(config, m_riot, clock/8);
 	m_riot->pa_rd_callback().set(FUNC(a7800_state::riot_joystick_r));
+	m_riot->pa_wr_callback().set(FUNC(a7800_state::riot_joystick_w));
 	m_riot->pb_rd_callback().set(FUNC(a7800_state::riot_console_button_r));
 	m_riot->pb_wr_callback().set(FUNC(a7800_state::riot_button_pullup_w));
 
 	A78_CART_SLOT(config, m_cart, clock/8, a7800_cart, nullptr);
+	I2C_24C256(config, m_savekey);  // a SaveKey in port 2
 	m_cart->set_vcs_image("cartridge2600");
 
 	// 2600 mode: the 2600's bus, its cartridge slot (-cart2600) and the TIA's video

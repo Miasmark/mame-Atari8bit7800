@@ -125,6 +125,7 @@ a78_cart_slot_device::a78_cart_slot_device(const machine_config &mconfig, const 
 	, m_cart(nullptr)
 	, m_type(0)
 	, m_vcs_image(nullptr)
+	, m_savekey(false)
 {
 }
 
@@ -414,6 +415,15 @@ static bool a78_bios_check(uint8_t check, uint32_t len)
 	return (check & 0x0b) == 0x03 && signed_start >= std::max<uint32_t>(0x10000 - std::min<uint32_t>(len, 0xc000), 0x4000);
 }
 
+// the High Score Cartridge's ROM (4K), known without the software list too
+bool a78_cart_slot_device::is_hsc_image(const uint8_t *data, uint32_t len) const
+{
+	if (len != 0x1000)
+		return false;
+	uint32_t const crc = util::crc32_creator::simple(data, len);
+	return crc == 0x9be408d3 || softlist_type(data, len) == A78_HSC;
+}
+
 // the image this slot last passed on to the 2600 cartridge slot
 std::string a78_cart_slot_device::s_vcs_forwarded;
 
@@ -457,6 +467,8 @@ int a78_cart_slot_device::softlist_type(const uint8_t *data, uint32_t len) const
 // An image without a header: a known 7800 dump, a 7800 image the BIOS would run, or a 2600 image.
 int a78_cart_slot_device::headerless_type(const uint8_t *data, uint32_t len) const
 {
+	if (is_hsc_image(data, len))
+		return A78_HSC;
 	if (int const type = softlist_type(data, len); type >= 0)
 		return type;
 
@@ -621,10 +633,12 @@ std::pair<std::error_condition, std::string> a78_cart_slot_device::call_load()
 				osd_printf_info("This cart supports external NVRAM using HSC.\n");
 				osd_printf_info("Run it with the High Score Cart mounted to exploit this feature.\n");
 			}
-			else if (head[58] == 2)
+			// a SaveKey or AtariVox in port 2: header byte 58 bit 1, or the controller type of port 2
+			m_savekey = BIT(head[58], 1) || head[56] == 10;
+			if (m_savekey)
 			{
-				osd_printf_info("This cart supports external NVRAM using SaveKey.\n");
-				osd_printf_info("This is not supported in MAME currently.\n");
+				osd_printf_info("This cart saves to a SaveKey (or AtariVox) in controller port 2.\n");
+				osd_printf_info("It is plugged in there unless Machine Configuration says otherwise.\n");
 			}
 
 			if (head[63])
@@ -639,7 +653,7 @@ std::pair<std::error_condition, std::string> a78_cart_slot_device::call_load()
 			fread(m_cart->get_rom_base(), len);
 
 			// the High Score Cartridge's own image: its header says nothing of it
-			if (len == 0x1000 && softlist_type(m_cart->get_rom_base(), len) == A78_HSC)
+			if (is_hsc_image(m_cart->get_rom_base(), len))
 				m_type = A78_HSC;
 
 			if (m_type == A78_ACTIVISION)
@@ -763,7 +777,7 @@ std::string a78_cart_slot_device::get_default_card_software(get_default_card_sof
 		{
 			std::vector<uint8_t> data(0x1000);
 			read(*hook.image_file(), &data[0], 0x1000);
-			if (softlist_type(&data[0], 0x1000) == A78_HSC)
+			if (is_hsc_image(&data[0], 0x1000))
 				return a78_get_slot(A78_HSC);
 		}
 

@@ -144,6 +144,7 @@ public:
 	void set_vcs_image(const char *name) { m_vcs_image = name; }
 
 	int get_cart_type() { return m_type; }
+	bool wants_savekey() const { return m_savekey; }  // the header asks for a SaveKey or AtariVox in port 2
 	bool has_cart() { return m_cart != nullptr; }
 	void set_dma_active(bool active) { if (m_cart) m_cart->set_dma_active(active); }
 
@@ -168,11 +169,13 @@ private:
 	void internal_header_logging(const uint8_t *header, uint32_t len);
 	int softlist_type(const uint8_t *data, uint32_t len) const;
 	int headerless_type(const uint8_t *data, uint32_t len) const;
+	bool is_hsc_image(const uint8_t *data, uint32_t len) const;
 	void alloc_board_memory();
 
 	device_a78_cart_interface *m_cart;
 	int m_type;
 	const char *m_vcs_image;
+	bool m_savekey;
 	static std::string s_vcs_forwarded;
 };
 

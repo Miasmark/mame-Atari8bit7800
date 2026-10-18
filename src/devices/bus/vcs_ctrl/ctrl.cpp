@@ -177,6 +177,7 @@ void vcs_control_port_device::device_start()
 #include "lightgun.h"
 #include "lightpen.h"
 #include "paddles.h"
+#include "savekey.h"
 #include "trakball.h"
 #include "wheel.h"
 #include "xg1.h"
@@ -196,6 +197,7 @@ void vcs_control_port_devices(device_slot_interface &device)
 	device.option_add("joybstr", VCS_JOYSTICK_BOOSTER);
 	device.option_add("wheel", VCS_WHEEL);
 	device.option_add("keypad", VCS_KEYPAD);
+	device.option_add("savekey", VCS_SAVEKEY);
 	device.option_add("cx85", ATARI_CX85);
 	device.option_add("trakball", ATARI_TRAKBALL);
 	device.option_add("c1350", C1350);
