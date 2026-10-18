@@ -113,7 +113,10 @@
 #include "machine/timer.h"
 #include "sound/tiaintf.h"
 
+#include "emuopts.h"
 #include "emupal.h"
+#include "fileio.h"
+#include "romload.h"
 #include "screen.h"
 #include "softlist_dev.h"
 #include "speaker.h"
@@ -155,6 +158,7 @@ protected:
 	virtual void device_post_load() override;
 
 	void a7800_common(machine_config &config, uint32_t clock) ATTR_COLD;
+	void skip_missing_bios() ATTR_COLD;
 
 	uint8_t tia_r(offs_t offset);
 	uint8_t bankram_window_r(offs_t offset);
@@ -208,6 +212,7 @@ protected:
 	int m_pixelx = 0;
 	bool m_cart_ram_exec_warned = false;
 	uint8_t m_skip_bios = 0;        // the -bios number of "skip" on this machine
+	bool m_no_bios = false;         // running without a BIOS: -bios skip, or the BIOS's file is missing
 	uint32_t m_clock = 0;           // the master clock (14.32 MHz NTSC, 14.19 MHz PAL)
 	bool m_vcs_mode = false;        // 2600 mode (INPTCTRL locked with MARIA disabled)
 	bool m_vcs_window = false;      // a 2600 cartridge and no 7800 one
@@ -1667,6 +1672,13 @@ void a7800_state::machine_start()
 	save_item(NAME(m_maria_flag));
 	save_item(NAME(m_vcs_mode));
 
+	// a BIOS asked for by name whose file is missing leaves its area empty, with no reset
+	// vector: start as with -bios skip
+	uint8_t const *const bios = memregion("maincpu")->base();
+	m_no_bios = (system_bios() == m_skip_bios) || (bios[0x3ffc] == 0xff && bios[0x3ffd] == 0xff);
+	if (m_no_bios && system_bios() != m_skip_bios)
+		osd_printf_info("The BIOS's file was not found: the cartridge starts without it, as with -bios skip\n");
+
 	m_7800_width = m_screen->width();
 	m_7800_height = m_screen->height();
 	m_7800_visarea = m_screen->visible_area();
@@ -1748,7 +1760,7 @@ void a7800_state::machine_start()
 		}
 	}
 
-	if (system_bios() == m_skip_bios)
+	if (m_no_bios)
 		logerror("BIOS skipped: the cartridge starts from its reset vector, as Atari's NTSC BIOS hands over\n");
 
 	m_dma_start_timer = timer_alloc(FUNC(a7800_state::maria_startdma), this);
@@ -1770,7 +1782,7 @@ void a7800_state::machine_reset()
 	m_maria_bios_view.select(0);
 	set_vcs_mode(false);
 
-	if (system_bios() == m_skip_bios && !has_7800_cart() && m_vcs_cart->exists())
+	if (m_no_bios && !has_7800_cart() && m_vcs_cart->exists())
 	{
 		// no BIOS and a 2600 cartridge: straight into 2600 mode, as the BIOS's bootstrap leaves it
 		// (INPTCTRL $FD), and the reset sequence takes the cartridge's own vector
@@ -1780,7 +1792,7 @@ void a7800_state::machine_reset()
 		m_maria_bios_view.disable();
 		set_vcs_mode(true);
 	}
-	else if (system_bios() == m_skip_bios)
+	else if (m_no_bios)
 	{
 		// no BIOS: start where Atari's NTSC BIOS leaves a signed cartridge (docs/bios.md in
 		// the a7800 toolkit, measured in MAME): INPTCTRL $16 (MARIA on, BIOS off, not locked),
@@ -1808,8 +1820,32 @@ void a7800_state::machine_reset()
 	}
 }
 
+// The 7800 runs a cartridge without its BIOS (-bios skip). When the default BIOS's file is not
+// where MAME looks for this system's ROMs (by name or by CRC), "skip" becomes the default, so the
+// system starts without it. The BIOS files are optional, so the system is not shown as missing
+// its ROMs either.
+void a7800_state::skip_missing_bios()
+{
+	emu_file file(mconfig().options().media_path(), searchpath(), OPEN_FLAG_READ);
+	file.set_restrict_to_mediapath(1);
+	for (tiny_rom_entry const *rom = rom_region(); rom && !ROMENTRY_ISEND(rom); ++rom)
+	{
+		// the default BIOS is the first one
+		if (ROMENTRY_ISFILE(rom) && ROM_GETBIOSFLAGS(rom) == 1)
+		{
+			u32 crc = 0;
+			bool const has_crc = util::hash_collection(rom->hashdata).crc(crc);
+			if (!(has_crc ? file.open(rom->name, crc) : file.open(rom->name)))
+				return;
+		}
+	}
+	set_default_bios_tag("skip");
+}
+
 void a7800_state::a7800_common(machine_config &config, uint32_t clock)
 {
+	skip_missing_bios();
+
 	// basic machine hardware
 	M6502(config, m_maincpu, clock/8); // NTSC 1.79 MHz, PAL 1.77 MHz (switches to 1.19 MHz on TIA or RIOT access)
 	m_maincpu->set_addrmap(AS_PROGRAM, &a7800_state::a7800_mem);
@@ -1888,20 +1924,22 @@ void a7800_pal_state::a7800_pal(machine_config &config)
     ROM DEFINITIONS
 ***************************************************************************/
 
+// The BIOS files are optional (ROM_OPTIONALMASK: the ROM_OPTIONAL name is deprecated in favour of
+// BIOS options, which these are): without them the system starts as with -bios skip.
 ROM_START( a7800 )
 	ROM_REGION(0x4000, "maincpu", ROMREGION_ERASEFF)
 	ROM_SYSTEM_BIOS( 0, "a7800", "Atari 7800" )
 	// TODO: c024922b-29usa.u7, c024922b-29.u7 and c024922b-01.u7 have been seen on pics, which one is this? Or are they all the same?
-	ROMX_LOAD("7800.u7", 0x3000, 0x1000, CRC(5d13730c) SHA1(d9d134bb6b36907c615a594cc7688f7bfcef5b43), ROM_BIOS(0))
+	ROMX_LOAD("7800.u7", 0x3000, 0x1000, CRC(5d13730c) SHA1(d9d134bb6b36907c615a594cc7688f7bfcef5b43), ROM_BIOS(0) | ROM_OPTIONALMASK)
 	ROM_SYSTEM_BIOS( 1, "a7800pr", "Atari 7800 (prototype with Asteroids)" ) // TODO: is this really a prototype? notice the ROM code is almost the same as the released PAL version
-	ROMX_LOAD("c300558-001a.u7", 0x0000, 0x4000, CRC(a0e10edf) SHA1(14584b1eafe9721804782d4b1ac3a4a7313e455f), ROM_BIOS(1))
+	ROMX_LOAD("c300558-001a.u7", 0x0000, 0x4000, CRC(a0e10edf) SHA1(14584b1eafe9721804782d4b1ac3a4a7313e455f), ROM_BIOS(1) | ROM_OPTIONALMASK)
 	ROM_SYSTEM_BIOS( 2, "skip", "None (boot straight into the cartridge)" )
 ROM_END
 
 ROM_START( a7800p )
 	ROM_REGION(0x4000, "maincpu", ROMREGION_ERASEFF)
 	ROM_SYSTEM_BIOS( 0, "a7800p", "Atari 7800 (PAL)" )
-	ROMX_LOAD("c300558-001b.u7", 0x0000, 0x4000, CRC(d5b61170) SHA1(5a140136a16d1d83e4ff32a19409ca376a8df874), ROM_BIOS(0))
+	ROMX_LOAD("c300558-001b.u7", 0x0000, 0x4000, CRC(d5b61170) SHA1(5a140136a16d1d83e4ff32a19409ca376a8df874), ROM_BIOS(0) | ROM_OPTIONALMASK)
 	ROM_SYSTEM_BIOS( 1, "skip", "None (boot straight into the cartridge)" )
 ROM_END
 
