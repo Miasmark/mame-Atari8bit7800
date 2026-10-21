@@ -132,6 +132,7 @@ void atari_maria_device::device_start()
 	save_item(NAME(m_kangaroo));
 	save_item(NAME(m_rm));
 	save_item(NAME(m_dli));
+	save_item(NAME(m_first_dma));
 	save_item(NAME(m_charbase));
 }
 
@@ -163,6 +164,7 @@ void atari_maria_device::device_reset()
 	m_offset = 0;
 	m_dpp = 0;
 	m_dli = false;
+	m_first_dma = false;
 	m_charbase = 0;
 }
 
@@ -226,6 +228,15 @@ void atari_maria_device::draw_scanline()
 		// MARIA is done rendering, or after its hit the maximum rendering time.
 		uint64_t maria_cycles = 16;
 
+		// The first DMA of a frame costs 8 more (7800 Software Guide, Appendix 3, as of
+		// 2026-10: measured on hardware as 2 CPU cycles a frame with DMA on; which line pays
+		// them is not known, the end of VBLANK that loads the first zone is the guess)
+		if (m_first_dma)
+		{
+			maria_cycles += 8;
+			m_first_dma = false;
+		}
+
 		/* Process this DLL entry */
 		uint16_t dl = m_dl;
 
@@ -265,7 +276,9 @@ void atari_maria_device::draw_scanline()
 
 			/*LOGVIDEO("%x DL: ADR=%x  width=%x  hpos=%x  pal=%x  mode=%x  ind=%x\n", screen().vpos(), graph_adr, width, hpos, pal, m_write_mode, ind);*/
 
-			// the first hole in a header's graphics costs MARIA a 3-cycle fetch, the rest are free
+			// graphics in a DMA hole cost MARIA a fixed amount per object, the header aside: 3
+			// cycles for a direct object, 6 for single-wide characters and 9 for double-wide ones
+			// (7800 Software Guide, Appendix 3, as of 2026-10; it was 3 for every kind)
 			bool dma_hole_known = false;
 
 			for (int x = 0; x < width; x++)
@@ -281,7 +294,7 @@ void atari_maria_device::draw_scanline()
 					if (is_holey(data_addr))
 					{
 						if (!dma_hole_known)
-							maria_cycles += 3;
+							maria_cycles += m_cwidth ? 9 : 6;
 						dma_hole_known = true;
 						continue;
 					}
@@ -319,13 +332,11 @@ void atari_maria_device::draw_scanline()
 			}
 		}
 
-		// Last Line post-render DMA cycle penalties...
+		// Last Line post-render DMA cycle penalties... A display list interrupt costs no DMA time
+		// (7800 Software Guide, Appendix 3, as of 2026-10: measured on hardware, frames with a
+		// DLI on every zone take as many CPU cycles as without; the a7800 fork charged 17)
 		if (m_offset == 0)
-		{
 			maria_cycles += 8; // extra shutdown time (the fork measured 8; it was 6)
-			if (BIT(read_dl(m_dll + 3), 7))
-				maria_cycles += 17; // interrupt overhead
-		}
 
 		// If MARIA used up all of the DMA time then the CPU can't run until next line...
 		if (maria_cycles >= DMALIMIT)
@@ -437,6 +448,7 @@ void atari_maria_device::startdma(int lines)
 	if ((frame_scanline == 16) && m_dmaon)
 	{
 		/* end of vblank */
+		m_first_dma = true;
 		m_dll = m_dpp; // currently only handle changes to dll during vblank
 		m_dl = (read_dl(m_dll + 1) << 8) | read_dl(m_dll + 2);
 		const uint8_t header = read_dl(m_dll);
