@@ -58,7 +58,9 @@ mode. With Warm, every colour matches the Pocket core's own screenshots of a col
 - **POKEY at `$0800`**, and **dual POKEY** at `$0440`+`$0450` (both chips at half gain).
 - **Activision `.a78` images in the usual block order** now boot.
 - **MARIA timing from the 7800-devtools a7800 fork**, with MARIA's DMA in its own address space, so
-  debugger and Lua watches can tell its reads from the CPU's.
+  debugger and Lua watches can tell its reads from the CPU's; updated to the 7800 Software Guide's
+  revised DMA timing (October 2026): a display list interrupt costs no DMA time, holey character
+  objects cost 6 or 9 cycles, and the first DMA of each frame 8 more.
 - **No BIOS file needed.** Without one the 7800 boots straight into the cartridge, as with
   `-bios skip`, and the system is not shown as missing its ROMs. With the BIOS file in the ROM folder
   it runs as before; `-bios skip` still skips it.
