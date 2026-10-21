@@ -54,6 +54,8 @@ static void a7800_cart(device_slot_interface &device)
 	device.option_add_internal("a78_bankset_sg",                 A78_ROM_BANKSET_SG);
 	device.option_add_internal("a78_bankset_sg_p800",            A78_ROM_BANKSET_SG_POK800);
 	device.option_add_internal("a78_bankset_sg_bankram",         A78_ROM_BANKSET_SG_BANKRAM);
+	device.option_add_internal("a78_bankset_sg_ram",             A78_ROM_BANKSET_SG_RAM);
+	device.option_add_internal("a78_bankset_sg_ram_p800",        A78_ROM_BANKSET_SG_RAM_POK800);
 	device.option_add_internal("a78_bankset_sg_bankram_p800",    A78_ROM_BANKSET_SG_BANKRAM_POK800);
 }
 

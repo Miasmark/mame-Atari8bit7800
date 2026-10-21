@@ -351,7 +351,9 @@ static const a78_slot slot_list[] =
 	{ A78_BANKSET_BANKRAM,           "a78_bankset_bankram" },
 	{ A78_BANKSET_BANKRAM_POK800,    "a78_bankset_bankram_p800" },
 	{ A78_BANKSET_52K,               "a78_bankset_52k" },
-	{ A78_BANKSET_52K_POK4000,       "a78_bankset_52k_p4000" }
+	{ A78_BANKSET_52K_POK4000,       "a78_bankset_52k_p4000" },
+	{ A78_BANKSET_SG_RAM,            "a78_bankset_sg_ram" },
+	{ A78_BANKSET_SG_RAM_POK800,     "a78_bankset_sg_ram_p800" }
 };
 
 // Bankset carts (header bit $2000) and carts with a POKEY at $0800 (header bit $8000), which
@@ -371,6 +373,8 @@ static int a78_special_type(int mapper, uint64_t len)
 	case 0x6002: return A78_BANKSET_SG_BANKRAM;
 	case 0xa002: return A78_BANKSET_SG_POK800;
 	case 0xe002: return A78_BANKSET_SG_BANKRAM_POK800;
+	case 0x2006: return A78_BANKSET_SG_RAM;     // SuperGame RAM at $4000, without the bank RAM bit
+	case 0xa006: return A78_BANKSET_SG_RAM_POK800;
 	case 0x8000: return BIT(mapper, 0) ? A78_TYPE1_POK800 : A78_TYPE0_POK800;
 	case 0x8002: return A78_TYPE2_POK800;
 	case 0x8006: return A78_TYPE6_POK800;
@@ -694,6 +698,9 @@ void a78_cart_slot_device::alloc_board_memory()
 	if (m_type == A78_MEGACART || (m_type >= A78_VERSABOARD && m_type <= A78_VERSA_POK450)
 			|| (m_type >= A78_TYPE0_POK450_440 && m_type <= A78_VERSA_POK450_440))
 		m_cart->ram_alloc(0x8000);
+	// bankset with SuperGame RAM: 16K at $4000 that both chips read
+	if (m_type == A78_BANKSET_SG_RAM || m_type == A78_BANKSET_SG_RAM_POK800)
+		m_cart->ram_alloc(0x4000);
 	// bankset bank RAM: 16K for the CPU at $4000 and 16K for MARIA
 	if (m_type == A78_BANKSET_SG_BANKRAM || m_type == A78_BANKSET_SG_BANKRAM_POK800 ||
 			m_type == A78_BANKSET_BANKRAM || m_type == A78_BANKSET_BANKRAM_POK800)
