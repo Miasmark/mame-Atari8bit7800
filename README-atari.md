@@ -5,7 +5,8 @@ Atari 8-bit (400/800/XL/XE/XEGS) drivers. It is not a MAME release and is not su
 please report problems on this fork, not to MAME. MAME is a registered trademark of Gregory Ember.
 
 Branch `atari-0.289` is MAME 0.289 plus the commits listed by `git log mame0289..atari-0.289`; each
-change is its own commit with a description of what was measured.
+change is its own commit with a description of what was measured. The fork's `master` has the same
+work merged into current MAME.
 
 ## What cartridge is this? (2600 and 7800)
 
@@ -117,11 +118,6 @@ mode. With Warm, every colour matches the Pocket core's own screenshots of a col
   poll INTIM for 0 once a line (Stay Frosty 2). A read after the timer runs out now resumes counting
   on the prescaler's own phase. Checked against Stella read by read.
 - **The 6532 RIOT keeps its timer count when its clock changes.**
-
-## Not in this branch
-
-The Atari XG-1 light gun for the 2600 (Sentinel, Shooting Arcade) builds on light-pen support that
-MAME added after 0.289. It is on the development line, not here.
 
 ## Downloads
 
