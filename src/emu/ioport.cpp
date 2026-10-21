@@ -3026,6 +3026,19 @@ time_t ioport_manager::playback_init()
 	if (sysname != machine().system().name)
 		osd_printf_info("Input file is for machine '%s', not for current machine '%s'\n", sysname, machine().system().name);
 
+	// lining a recording up with a game that starts on another frame (another BIOS, a re-signed
+	// or patched build) shifts its frame times, so an offset implies forcing past them
+	int const offset = machine().options().playback_offset();
+	m_playback_drop = (offset > 0) ? offset : 0;
+	m_playback_hold = (offset < 0) ? -offset : 0;
+	m_playback_holding = false;
+	m_playback_force = machine().options().playback_force() || offset != 0;
+	m_playback_sync_noted = false;
+	if (offset > 0)
+		osd_printf_info("Playback offset: dropping the input file's first %d frames\n", offset);
+	else if (offset < 0)
+		osd_printf_info("Playback offset: waiting %d frames before playing the input file\n", -offset);
+
 	// enable compression
 	m_playback_stream = util::zlib_read(*m_playback_file, 16386);
 	return basetime;
@@ -3075,14 +3088,44 @@ void ioport_manager::playback_frame(const attotime &curtime)
 	// if playing back, fetch the information and verify
 	if (m_playback_stream)
 	{
+		// -playback_offset < 0: not yet
+		m_playback_holding = m_playback_hold != 0;
+		if (m_playback_holding)
+		{
+			m_playback_hold--;
+			return;
+		}
+
+		// -playback_offset > 0: read past the first frames (each port's values are read
+		// into the port and then overwritten by the frame that is played)
+		for ( ; m_playback_drop && m_playback_stream; m_playback_drop--)
+		{
+			seconds_t seconds_skip;
+			attoseconds_t attoseconds_skip;
+			u32 speed_skip;
+			playback_read(seconds_skip);
+			playback_read(attoseconds_skip);
+			playback_read(speed_skip);
+			for (auto &port : m_portlist)
+				playback_port_read(*port.second.get());
+		}
+
 		// first the absolute time
 		seconds_t seconds_temp;
 		attoseconds_t attoseconds_temp;
 		playback_read(seconds_temp);
 		playback_read(attoseconds_temp);
 		attotime readtime(seconds_temp, attoseconds_temp);
-		if (readtime != curtime)
-			playback_end("Out of sync");
+		if (readtime != curtime && m_playback_stream)
+		{
+			if (!m_playback_force)
+				playback_end("Out of sync");
+			else if (!m_playback_sync_noted)
+			{
+				m_playback_sync_noted = true;
+				osd_printf_info("Playback: the input file's frame times differ from this run's; playing on (forced)\n");
+			}
+		}
 
 		// then the speed
 		u32 curspeed;
@@ -3099,6 +3142,12 @@ void ioport_manager::playback_frame(const attotime &curtime)
 void ioport_manager::playback_port(ioport_port &port)
 {
 	// if playing back, fetch information about this port
+	if (!m_playback_holding)
+		playback_port_read(port);
+}
+
+void ioport_manager::playback_port_read(ioport_port &port)
+{
 	if (m_playback_stream)
 	{
 		// read the default value and the digital state

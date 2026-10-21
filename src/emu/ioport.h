@@ -993,6 +993,7 @@ private:
 	void playback_end(const char *message = nullptr);
 	void playback_frame(const attotime &curtime);
 	void playback_port(ioport_port &port);
+	void playback_port_read(ioport_port &port);
 
 	template<typename Type> void record_write(Type value);
 	void record_init();
@@ -1023,6 +1024,11 @@ private:
 	util::read_stream::ptr  m_playback_stream;      // playback stream (nullptr if not recording)
 	u64                     m_playback_accumulated_speed; // accumulated speed during playback
 	u32                     m_playback_accumulated_frames; // accumulated frames during playback
+	u32                     m_playback_drop = 0;    // input file frames still to drop (-playback_offset > 0)
+	u32                     m_playback_hold = 0;    // frames still to wait before playing (-playback_offset < 0)
+	bool                    m_playback_holding = false; // this frame is one of those
+	bool                    m_playback_force = false;   // keep going when frame times differ
+	bool                    m_playback_sync_noted = false;
 
 	// storage for inactive configuration
 	std::unique_ptr<util::xml::file> m_deselected_card_config;

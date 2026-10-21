@@ -8,6 +8,9 @@
 
 #include "emu.h"
 #include "tia.h"
+
+#include "tuccitto_pal.h"
+
 #include "screen.h"
 
 static const int nusiz[8][3] =
@@ -46,8 +49,33 @@ void tia_video_device::extend_palette()
 	}
 }
 
+// the palette the Palette setting picks, when it is not the original one
+u8 tia_video_device::palette_choice() const
+{
+	return (m_config->read() >> 1) & 3;
+}
+
+void tia_video_device::update_palette()
+{
+	u8 const choice = palette_choice();
+	if (choice != m_palette_choice)
+	{
+		m_palette_choice = choice;
+		init_palette();
+	}
+}
+
 void tia_ntsc_video_device::init_palette()
 {
+	// Tuccitto's measured 7800 palette: the 2600's colour byte picks the same entry
+	if (m_palette_choice != atari_tuccitto::ORIGINAL)
+	{
+		for (int i = 0; i < 128; i++)
+			set_pen_color(i, atari_tuccitto::ntsc[m_palette_choice][i << 1]);
+		extend_palette();
+		return;
+	}
+
 	/********************************************************************
 	Atari 2600 NTSC Palette Notes:
 
@@ -294,6 +322,15 @@ void tia_ntsc_video_device::init_palette()
 
 void tia_pal_video_device::init_palette()
 {
+	// Tuccitto's measured 7800 PAL palette, under the 7800's number for each 2600 hue
+	if (m_palette_choice != atari_tuccitto::ORIGINAL)
+	{
+		for (int i = 0; i < 128; i++)
+			set_pen_color(i, atari_tuccitto::pal[m_palette_choice][(atari_tuccitto::pal_2600_hue[i >> 3] << 4) | ((i & 7) << 1)]);
+		extend_palette();
+		return;
+	}
+
 	static constexpr double color[16][2] =
 	{
 		{  0.000,  0.000 },
@@ -358,7 +395,29 @@ tia_video_device::tia_video_device(const machine_config &mconfig, device_type ty
 	, m_vsync_cb(*this)
 	, m_maincpu(*this, "^maincpu")
 	, m_tia(*this, finder_base::DUMMY_TAG)
+	, m_config(*this, "CONFIG")
 {
+}
+
+
+// Frame blending shows a sprite drawn on alternate frames (flicker) as a steady, dimmer one,
+// as on a TV; turned off, each frame is shown as drawn, as in a frame-by-frame look.
+static INPUT_PORTS_START( tia_video )
+	PORT_START("CONFIG")
+	PORT_CONFNAME( 0x01, 0x01, "Frame Blending" )
+	PORT_CONFSETTING(    0x00, DEF_STR( Off ) )
+	PORT_CONFSETTING(    0x01, DEF_STR( On ) )
+	// Robert Tuccitto's palettes, measured at three console temperatures (see tuccitto_pal.h)
+	PORT_CONFNAME( 0x06, 0x00, "Palette" )
+	PORT_CONFSETTING(    0x00, "Warm (26.7 degrees)" )
+	PORT_CONFSETTING(    0x02, "Cool (25.7 degrees)" )
+	PORT_CONFSETTING(    0x04, "Hot (27.7 degrees)" )
+	PORT_CONFSETTING(    0x06, "MAME 0.289" )
+INPUT_PORTS_END
+
+ioport_constructor tia_video_device::device_input_ports() const
+{
+	return INPUT_PORTS_NAME( tia_video );
 }
 
 // device type definition
@@ -391,6 +450,8 @@ tia_ntsc_video_device::tia_ntsc_video_device(const machine_config &mconfig, cons
 
 void tia_video_device::device_start()
 {
+	// the default; the Palette setting is followed from the first frame on
+	m_palette_choice = atari_tuccitto::WARM;
 	init_palette();
 
 	int cx = screen().width();
@@ -631,6 +692,42 @@ int tia_video_device::collision_check(uint8_t* p1, uint8_t* p2, int x1, int x2)
 	}
 
 	return 0;
+}
+
+
+//-------------------------------------------------
+//  light_sensor - a photodiode aimed at (x, y) of
+//  the screen bitmap sees light while the beam is
+//  close to that spot and draws something bright
+//  there, and for a short while after it moved on
+//  (phosphor glow and the sensor's own response)
+//-------------------------------------------------
+
+bool tia_video_device::light_sensor(int x, int y)
+{
+	// how far from its aim the sensor sees (lines and colour clocks), how long the light lasts
+	// after the beam has passed (colour clocks), and the luminance (0-7) it needs
+	constexpr int SENSOR_LINES = 1;
+	constexpr int SENSOR_WIDTH = 6;
+	constexpr int SENSOR_GLOW = 9;
+	constexpr int SENSOR_LUMA = 6;
+
+	int const beam_y = current_y();
+	if (beam_y < y - SENSOR_LINES || beam_y > y + SENSOR_LINES || beam_y >= screen_height)
+		return false;
+
+	// the picture is drawn at 34 in the bitmap; bring it up to the beam
+	int const beam_x = current_x() + 34;
+	if (!machine().side_effects_disabled())
+		update_bitmap(current_x(), beam_y);
+
+	uint16_t const *const line = &helper[current_bitmap].pix(beam_y);
+	for (int i = std::max({ beam_x - SENSOR_GLOW, x - SENSOR_WIDTH, 34 }); i <= std::min({ beam_x, x + SENSOR_WIDTH, 34 + 159 }); i++)
+	{
+		if ((line[i] & 0x07) >= SENSOR_LUMA)
+			return true;
+	}
+	return false;
 }
 
 
@@ -950,13 +1047,15 @@ void tia_video_device::update_bitmap(int next_x, int next_y)
 		}
 
 		if ( x2 == 160 && y % screen_height == (screen_height - 1) ) {
+			update_palette();
+			bool const blend = BIT(m_config->read(), 0);
 			for ( int t_y = 0; t_y < buffer.height(); t_y++ ) {
 				uint16_t* l0 = &helper[current_bitmap].pix(t_y);
 				uint16_t* l1 = &helper[1 - current_bitmap].pix(t_y);
 				uint32_t* l2 = &buffer.pix(t_y);
 				int t_x;
 				for( t_x = 0; t_x < buffer.width(); t_x++ ) {
-					if ( l0[t_x] != l1[t_x] ) {
+					if ( blend && l0[t_x] != l1[t_x] ) {
 						/* Combine both entries */
 						l2[t_x] = pen(( ( l0[t_x] + 1 ) << 7 ) | l1[t_x]);
 					} else {

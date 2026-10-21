@@ -27,6 +27,8 @@ public:
 	virtual ~vcs_cart_slot_device();
 
 	template <typename T> void set_address_space(T &&tag, int no) { m_address_space.set_tag(std::forward<T>(tag), no); }
+	// a machine with another cartridge slot too (the 7800) names this one apart
+	void set_image_names(const char *type, const char *brief) { m_image_type = type; m_image_brief = brief; }
 
 	// device_image_interface implementation
 	virtual std::pair<std::error_condition, std::string> call_load() override;
@@ -35,12 +37,16 @@ public:
 	virtual bool is_reset_on_load() const noexcept override { return true; }
 	virtual const char *image_interface() const noexcept override { return "a2600_cart"; }
 	virtual const char *file_extensions() const noexcept override { return "bin,a26"; }
+	virtual const char *image_type_name() const noexcept override { return m_image_type ? m_image_type : device_cartrom_image_interface::image_type_name(); }
+	virtual const char *image_brief_type_name() const noexcept override { return m_image_brief ? m_image_brief : device_cartrom_image_interface::image_brief_type_name(); }
+	virtual std::string media_details() const override;
 
 	// device_slot_interface implementation
 	virtual std::string get_default_card_software(get_default_card_software_hook &hook) const override;
 
 	int get_cart_type() { return m_type; }
 	static int identify_cart_type(const uint8_t *ROM, uint32_t len);
+	static int default_type_for_size(uint32_t len);
 
 protected:
 	// device_t implementation
@@ -50,12 +56,24 @@ private:
 	device_vcs_cart_interface *m_cart;
 	int m_type;
 	optional_address_space m_address_space;
+	const char *m_image_type = nullptr;
+	const char *m_image_brief = nullptr;
+	const char *m_origin = nullptr;  // how the board was told, for the user interface
 
 	static bool detect_snowhite(const uint8_t *cart, uint32_t len);
+	static bool detect_f8_bank1_start(const uint8_t *cart, uint32_t len);
 	static bool detect_modeDC(const uint8_t *cart, uint32_t len);
 	static bool detect_modeF6(const uint8_t *cart, uint32_t len);
 	static bool detect_mode3E(const uint8_t *cart, uint32_t len);
 	static bool detect_modeSS(const uint8_t *cart, uint32_t len);
+	static bool is_ss_tape_size(uint32_t len);
+	static bool is_usual_size(uint32_t len);
+	static bool is_any_banks_size(uint32_t len);
+	static int count_zp_stores(const uint8_t *cart, uint32_t len, uint8_t address);
+	static bool detect_mode3EP(const uint8_t *cart, uint32_t len);
+	static bool detect_any_3E(const uint8_t *cart, uint32_t len);
+	static bool detect_any_3F(const uint8_t *cart, uint32_t len);
+	static bool detect_ss_tape(const uint8_t *cart, uint32_t len);
 	static bool detect_modeFE(const uint8_t *cart, uint32_t len);
 	static bool detect_modeE0(const uint8_t *cart, uint32_t len);
 	static bool detect_modeCV(const uint8_t *cart, uint32_t len);
@@ -66,6 +84,16 @@ private:
 	static bool detect_8K_mode3F(const uint8_t *cart, uint32_t len);
 	static bool detect_32K_mode3F(const uint8_t *cart, uint32_t len);
 	static bool detect_super_chip(const uint8_t *cart, uint32_t len);
+	static bool detect_harmony(const uint8_t *cart, uint32_t len);
+	static bool detect_modeFA2(const uint8_t *cart, uint32_t len);
+	static bool has_arm_driver(const uint8_t *cart, uint32_t len);
+	static int count_abs_accesses(const uint8_t *cart, uint32_t len, uint16_t first, uint16_t last);
+	static int count_abs_accesses_masked(const uint8_t *cart, uint32_t len, uint16_t mask, uint16_t first, uint16_t last);
+	static bool detect_32in1(const uint8_t *cart, uint32_t len);
+	static bool detect_8in1(const uint8_t *cart, uint32_t len);
+	static bool detect_modeX07(const uint8_t *cart, uint32_t len);
+	static bool detect_modeSB(const uint8_t *cart, uint32_t len);
+	static bool detect_mode0840(const uint8_t *cart, uint32_t len);
 
 	friend class device_vcs_cart_interface;
 };
@@ -80,6 +108,9 @@ public:
 	virtual void install_memory_handlers(address_space *space) { }
 
 	virtual void setup_addon_ptr(uint8_t *ptr) { }
+
+	// more about the board than its name, for the user interface
+	virtual std::string board_details() const { return std::string(); }
 
 	void rom_alloc(uint32_t size, const char *tag);
 	void ram_alloc(uint32_t size);

@@ -89,6 +89,9 @@ attotime device_vcs_control_port_interface::time_until_lightpen_pos(int x255, in
 
 bool device_vcs_control_port_interface::light_detected(int x255, int y255) const
 {
+	if (!m_port->m_light_sense_cb.isnull())
+		return m_port->m_light_sense_cb(x255, y255);
+
 	if (!m_port->m_screen.found())
 		return false;
 
@@ -141,6 +144,7 @@ vcs_control_port_device::vcs_control_port_device(const machine_config &mconfig, 
 	device_slot_interface(mconfig, *this),
 	m_screen(*this, finder_base::DUMMY_TAG),
 	m_lightpen_time_cb(*this),
+	m_light_sense_cb(*this),
 	m_device(nullptr),
 	m_write_trigger(*this)
 {
@@ -154,6 +158,7 @@ vcs_control_port_device::vcs_control_port_device(const machine_config &mconfig, 
 void vcs_control_port_device::device_start()
 {
 	m_lightpen_time_cb.resolve();
+	m_light_sense_cb.resolve();
 
 	m_device = dynamic_cast<device_vcs_control_port_interface *>(get_card_device());
 }
@@ -172,8 +177,10 @@ void vcs_control_port_device::device_start()
 #include "lightgun.h"
 #include "lightpen.h"
 #include "paddles.h"
+#include "savekey.h"
 #include "trakball.h"
 #include "wheel.h"
+#include "xg1.h"
 
 void vcs_control_port_devices(device_slot_interface &device)
 {
@@ -186,9 +193,11 @@ void vcs_control_port_devices(device_slot_interface &device)
 	device.option_add("stacklr", STACK_LIGHT_RIFLE);
 	device.option_add("gunstick", GUN_STICK);
 	device.option_add("inkwell184c", INKWELL_184C);
+	device.option_add("xg1", ATARI_XG1);
 	device.option_add("joybstr", VCS_JOYSTICK_BOOSTER);
 	device.option_add("wheel", VCS_WHEEL);
 	device.option_add("keypad", VCS_KEYPAD);
+	device.option_add("savekey", VCS_SAVEKEY);
 	device.option_add("cx85", ATARI_CX85);
 	device.option_add("trakball", ATARI_TRAKBALL);
 	device.option_add("c1350", C1350);

@@ -274,6 +274,8 @@ if BUSES["A7800"] then
 		MAME_DIR .. "src/devices/bus/a7800/a78_carts.h",
 		MAME_DIR .. "src/devices/bus/a7800/rom.cpp",
 		MAME_DIR .. "src/devices/bus/a7800/rom.h",
+		MAME_DIR .. "src/devices/bus/a7800/bankset.cpp",
+		MAME_DIR .. "src/devices/bus/a7800/bankset.h",
 		MAME_DIR .. "src/devices/bus/a7800/hiscore.cpp",
 		MAME_DIR .. "src/devices/bus/a7800/hiscore.h",
 		MAME_DIR .. "src/devices/bus/a7800/xboard.cpp",
@@ -6310,6 +6312,8 @@ if BUSES["VCS"] then
 	files {
 		MAME_DIR .. "src/devices/bus/vcs/vcs_slot.cpp",
 		MAME_DIR .. "src/devices/bus/vcs/vcs_slot.h",
+		MAME_DIR .. "src/devices/bus/vcs/vcs_carts.cpp",
+		MAME_DIR .. "src/devices/bus/vcs/vcs_carts.h",
 		MAME_DIR .. "src/devices/bus/vcs/rom.cpp",
 		MAME_DIR .. "src/devices/bus/vcs/rom.h",
 		MAME_DIR .. "src/devices/bus/vcs/compumat.cpp",
@@ -6355,6 +6359,10 @@ if BUSES["VCS_CTRL"] then
 		MAME_DIR .. "src/devices/bus/vcs_ctrl/trakball.h",
 		MAME_DIR .. "src/devices/bus/vcs_ctrl/wheel.cpp",
 		MAME_DIR .. "src/devices/bus/vcs_ctrl/wheel.h",
+		MAME_DIR .. "src/devices/bus/vcs_ctrl/savekey.cpp",
+		MAME_DIR .. "src/devices/bus/vcs_ctrl/savekey.h",
+		MAME_DIR .. "src/devices/bus/vcs_ctrl/xg1.cpp",
+		MAME_DIR .. "src/devices/bus/vcs_ctrl/xg1.h",
 	}
 end
 

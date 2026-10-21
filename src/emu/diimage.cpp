@@ -296,6 +296,20 @@ void device_image_interface::set_image_tag()
 
 
 //-------------------------------------------------
+//  media_details - what the mounted media is, for
+//  the user interface: by default, for an image
+//  that is also a slot, the card it plugged in
+//-------------------------------------------------
+
+std::string device_image_interface::media_details() const
+{
+	device_slot_interface const *const slot = dynamic_cast<device_slot_interface const *>(this);
+	device_t const *const card = slot ? slot->get_card_device() : nullptr;
+	return card ? card->name() : std::string();
+}
+
+
+//-------------------------------------------------
 //  is_filetype - check if the filetype matches
 //-------------------------------------------------
 

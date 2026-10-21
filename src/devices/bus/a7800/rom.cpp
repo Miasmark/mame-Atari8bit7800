@@ -41,6 +41,14 @@ DEFINE_DEVICE_TYPE(A78_ROM_P450,        a78_rom_p450_device,        "a78_p450_t0
 DEFINE_DEVICE_TYPE(A78_ROM_P450_POKEY,  a78_rom_p450_pokey_device,  "a78_p450_t1",  "Atari 7800 ROM Carts w/no Bankswitch + POKEY + POKEY @ 0x0450")
 DEFINE_DEVICE_TYPE(A78_ROM_P450_SG_RAM, a78_rom_p450_sg_ram_device, "a78_p450_t6",  "Atari 7800 ROM Carts w/SuperGame Bankswitch + RAM + POKEY @ 0x0450")
 DEFINE_DEVICE_TYPE(A78_ROM_P450_SG9,    a78_rom_p450_sg9_device,    "a78_p450_ta",  "Atari 7800 ROM Carts w/SuperGame 9Banks + POKEY @ 0x0450")
+DEFINE_DEVICE_TYPE(A78_ROM_P440_P450,        a78_rom_p440_p450_device,        "a78_p440_t0",  "Atari 7800 ROM Carts w/POKEY @ 0x0440 + POKEY @ 0x0450")
+DEFINE_DEVICE_TYPE(A78_ROM_P440_P450_SG_RAM, a78_rom_p440_p450_sg_ram_device, "a78_p440_t6",  "Atari 7800 ROM Carts w/SuperGame Bankswitch + RAM + POKEY @ 0x0440 + POKEY @ 0x0450")
+DEFINE_DEVICE_TYPE(A78_ROM_P440_P450_SG9,    a78_rom_p440_p450_sg9_device,    "a78_p440_ta",  "Atari 7800 ROM Carts w/SuperGame 9Banks + POKEY @ 0x0440 + POKEY @ 0x0450")
+DEFINE_DEVICE_TYPE(A78_ROM_P800,        a78_rom_p800_device,        "a78_p800_t0",  "Atari 7800 ROM Carts w/POKEY @ 0x0800")
+DEFINE_DEVICE_TYPE(A78_ROM_P800_POKEY,  a78_rom_p800_pokey_device,  "a78_p800_t1",  "Atari 7800 ROM Carts w/no Bankswitch + POKEY + POKEY @ 0x0800")
+DEFINE_DEVICE_TYPE(A78_ROM_P800_SG,     a78_rom_p800_sg_device,     "a78_p800_t2",  "Atari 7800 ROM Carts w/SuperGame Bankswitch + POKEY @ 0x0800")
+DEFINE_DEVICE_TYPE(A78_ROM_P800_SG_RAM, a78_rom_p800_sg_ram_device, "a78_p800_t6",  "Atari 7800 ROM Carts w/SuperGame Bankswitch + RAM + POKEY @ 0x0800")
+DEFINE_DEVICE_TYPE(A78_ROM_P800_SG9,    a78_rom_p800_sg9_device,    "a78_p800_ta",  "Atari 7800 ROM Carts w/SuperGame 9Banks + POKEY @ 0x0800")
 
 
 a78_rom_device::a78_rom_device(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, uint32_t clock)
@@ -116,6 +124,36 @@ a78_rom_sg9_device::a78_rom_sg9_device(const machine_config &mconfig, const char
 }
 
 
+a78_rom_p800_device::a78_rom_p800_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+	: a78_rom_device(mconfig, A78_ROM_P800, tag, owner, clock)
+	, m_pokey800(*this, "pokey800")
+{
+}
+
+a78_rom_p800_pokey_device::a78_rom_p800_pokey_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+	: a78_rom_pokey_device(mconfig, A78_ROM_P800_POKEY, tag, owner, clock)
+	, m_pokey800(*this, "pokey800")
+{
+}
+
+a78_rom_p800_sg_device::a78_rom_p800_sg_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+	: a78_rom_sg_device(mconfig, A78_ROM_P800_SG, tag, owner, clock)
+	, m_pokey800(*this, "pokey800")
+{
+}
+
+a78_rom_p800_sg_ram_device::a78_rom_p800_sg_ram_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+	: a78_rom_sg_ram_device(mconfig, A78_ROM_P800_SG_RAM, tag, owner, clock)
+	, m_pokey800(*this, "pokey800")
+{
+}
+
+a78_rom_p800_sg9_device::a78_rom_p800_sg9_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+	: a78_rom_sg9_device(mconfig, A78_ROM_P800_SG9, tag, owner, clock)
+	, m_pokey800(*this, "pokey800")
+{
+}
+
 a78_rom_abs_device::a78_rom_abs_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
 	: a78_rom_device(mconfig, A78_ROM_ABSOLUTE, tag, owner, clock)
 	, m_bank(0)
@@ -132,7 +170,12 @@ a78_rom_act_device::a78_rom_act_device(const machine_config &mconfig, const char
 
 
 a78_rom_p450_device::a78_rom_p450_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
-	: a78_rom_device(mconfig, A78_ROM_P450, tag, owner, clock)
+	: a78_rom_p450_device(mconfig, A78_ROM_P450, tag, owner, clock)
+{
+}
+
+a78_rom_p450_device::a78_rom_p450_device(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, uint32_t clock)
+	: a78_rom_device(mconfig, type, tag, owner, clock)
 	, m_pokey450(*this, "pokey450")
 {
 }
@@ -144,14 +187,39 @@ a78_rom_p450_pokey_device::a78_rom_p450_pokey_device(const machine_config &mconf
 }
 
 a78_rom_p450_sg_ram_device::a78_rom_p450_sg_ram_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
-	: a78_rom_sg_ram_device(mconfig, A78_ROM_P450_SG_RAM, tag, owner, clock)
+	: a78_rom_p450_sg_ram_device(mconfig, A78_ROM_P450_SG_RAM, tag, owner, clock)
+{
+}
+
+a78_rom_p450_sg_ram_device::a78_rom_p450_sg_ram_device(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, uint32_t clock)
+	: a78_rom_sg_ram_device(mconfig, type, tag, owner, clock)
 	, m_pokey450(*this, "pokey450")
 {
 }
 
 a78_rom_p450_sg9_device::a78_rom_p450_sg9_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
-	: a78_rom_sg9_device(mconfig, A78_ROM_P450_SG9, tag, owner, clock)
+	: a78_rom_p450_sg9_device(mconfig, A78_ROM_P450_SG9, tag, owner, clock)
+{
+}
+
+a78_rom_p450_sg9_device::a78_rom_p450_sg9_device(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, uint32_t clock)
+	: a78_rom_sg9_device(mconfig, type, tag, owner, clock)
 	, m_pokey450(*this, "pokey450")
+{
+}
+
+a78_rom_p440_p450_device::a78_rom_p440_p450_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+	: a78_pokey440_device<a78_rom_p450_device>(mconfig, A78_ROM_P440_P450, tag, owner, clock, "pokey_450")
+{
+}
+
+a78_rom_p440_p450_sg_ram_device::a78_rom_p440_p450_sg_ram_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+	: a78_pokey440_device<a78_rom_p450_sg_ram_device>(mconfig, A78_ROM_P440_P450_SG_RAM, tag, owner, clock, "pokey_450")
+{
+}
+
+a78_rom_p440_p450_sg9_device::a78_rom_p440_p450_sg9_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+	: a78_pokey440_device<a78_rom_p450_sg9_device>(mconfig, A78_ROM_P440_P450_SG9, tag, owner, clock, "pokey_450")
 {
 }
 
@@ -511,4 +579,43 @@ void a78_rom_p450_sg9_device::device_add_mconfig(machine_config &config)
 	SPEAKER(config, "pokey_450").front_center();
 
 	POKEY(config, m_pokey450, DERIVED_CLOCK(1, 1)).add_route(ALL_OUTPUTS, "pokey_450", 1.00);
+}
+
+// Machine configs for PCB variants with a POKEY at $0800
+
+void a78_rom_p800_device::device_add_mconfig(machine_config &config)
+{
+	SPEAKER(config, "pokey_800").front_center();
+
+	POKEY(config, m_pokey800, DERIVED_CLOCK(1, 1)).add_route(ALL_OUTPUTS, "pokey_800", 1.00);
+}
+
+void a78_rom_p800_pokey_device::device_add_mconfig(machine_config &config)
+{
+	SPEAKER(config, "addon").front_center();
+
+	POKEY(config, m_pokey, DERIVED_CLOCK(1, 1)).add_route(ALL_OUTPUTS, "addon", 1.00);
+
+	POKEY(config, m_pokey800, DERIVED_CLOCK(1, 1)).add_route(ALL_OUTPUTS, "addon", 1.00);
+}
+
+void a78_rom_p800_sg_device::device_add_mconfig(machine_config &config)
+{
+	SPEAKER(config, "pokey_800").front_center();
+
+	POKEY(config, m_pokey800, DERIVED_CLOCK(1, 1)).add_route(ALL_OUTPUTS, "pokey_800", 1.00);
+}
+
+void a78_rom_p800_sg_ram_device::device_add_mconfig(machine_config &config)
+{
+	SPEAKER(config, "pokey_800").front_center();
+
+	POKEY(config, m_pokey800, DERIVED_CLOCK(1, 1)).add_route(ALL_OUTPUTS, "pokey_800", 1.00);
+}
+
+void a78_rom_p800_sg9_device::device_add_mconfig(machine_config &config)
+{
+	SPEAKER(config, "pokey_800").front_center();
+
+	POKEY(config, m_pokey800, DERIVED_CLOCK(1, 1)).add_route(ALL_OUTPUTS, "pokey_800", 1.00);
 }

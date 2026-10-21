@@ -41,11 +41,15 @@ private:
 	virtual bool handle(event const *ev) override;
 
 	void fill_image_line(device_image_interface &img, std::string &instance, std::string &filename);
+	static std::vector<std::string> footer_lines(device_image_interface &img);
+	void update_footer();
 
 	std::string const m_warnings;
 	std::vector<util::notifier_subscription> m_notifiers;
 	std::optional<text_layout> m_warnings_layout;
 	device_image_interface *m_selected_device;
+	std::vector<std::string> m_footer;  // what is shown under the menu for the selected image
+	unsigned m_footer_space;            // lines kept for it: as many as the image with the most needs
 };
 
 } // namespace ui

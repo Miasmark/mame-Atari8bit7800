@@ -26,13 +26,24 @@ DEFINE_DEVICE_TYPE(A26_ROM_F4,    a26_rom_f4_device,    "vcs_f4",    "Atari VCS 
 DEFINE_DEVICE_TYPE(A26_ROM_F6,    a26_rom_f6_device,    "vcs_f6",    "Atari VCS 2600 ROM Carts w/F6 bankswitch")
 DEFINE_DEVICE_TYPE(A26_ROM_F8,    a26_rom_f8_device,    "vcs_f8",    "Atari VCS 2600 ROM Carts w/F8 bankswitch")
 DEFINE_DEVICE_TYPE(A26_ROM_F8_SW, a26_rom_f8_sw_device, "vcs_f8_sw", "Atari VCS 2600 ROM Cart Snow White")
+DEFINE_DEVICE_TYPE(A26_ROM_EF,    a26_rom_ef_device,    "vcs_ef",    "Atari VCS 2600 ROM Carts w/EF bankswitch")
+DEFINE_DEVICE_TYPE(A26_ROM_DF,    a26_rom_df_device,    "vcs_df",    "Atari VCS 2600 ROM Carts w/DF bankswitch")
+DEFINE_DEVICE_TYPE(A26_ROM_BF,    a26_rom_bf_device,    "vcs_bf",    "Atari VCS 2600 ROM Carts w/BF bankswitch")
+DEFINE_DEVICE_TYPE(A26_ROM_SB,    a26_rom_sb_device,    "vcs_sb",    "Atari VCS 2600 ROM Carts w/SB (SUPERbanking) bankswitch")
+DEFINE_DEVICE_TYPE(A26_ROM_MDM,   a26_rom_mdm_device,   "vcs_mdm",   "Atari VCS 2600 Menu Driven Megacart")
 DEFINE_DEVICE_TYPE(A26_ROM_FA,    a26_rom_fa_device,    "vcs_fa",    "Atari VCS 2600 ROM Carts w/FA bankswitch")
+DEFINE_DEVICE_TYPE(A26_ROM_FA2,   a26_rom_fa2_device,   "vcs_fa2",   "Atari VCS 2600 ROM Carts w/FA2 bankswitch")
 DEFINE_DEVICE_TYPE(A26_ROM_FE,    a26_rom_fe_device,    "vcs_fe",    "Atari VCS 2600 ROM Carts w/FE bankswitch")
 DEFINE_DEVICE_TYPE(A26_ROM_3E,    a26_rom_3e_device,    "vcs_3e",    "Atari VCS 2600 ROM Carts w/3E bankswitch")
 DEFINE_DEVICE_TYPE(A26_ROM_3F,    a26_rom_3f_device,    "vcs_3f",    "Atari VCS 2600 ROM Carts w/3F bankswitch")
+DEFINE_DEVICE_TYPE(A26_ROM_3EP,   a26_rom_3ep_device,   "vcs_3ep",   "Atari VCS 2600 ROM Carts w/3E+ bankswitch")
 DEFINE_DEVICE_TYPE(A26_ROM_E0,    a26_rom_e0_device,    "vcs_e0",    "Atari VCS 2600 ROM Carts w/E0 bankswitch")
 DEFINE_DEVICE_TYPE(A26_ROM_E7,    a26_rom_e7_device,    "vcs_e7",    "Atari VCS 2600 ROM Carts w/E7 bankswitch")
 DEFINE_DEVICE_TYPE(A26_ROM_UA,    a26_rom_ua_device,    "vcs_ua",    "Atari VCS 2600 ROM Carts w/UA bankswitch")
+DEFINE_DEVICE_TYPE(A26_ROM_UASW,  a26_rom_uasw_device,  "vcs_uasw",  "Atari VCS 2600 ROM Carts w/UA bankswitch (swapped banks)")
+DEFINE_DEVICE_TYPE(A26_ROM_0840,  a26_rom_0840_device,  "vcs_0840",  "Atari VCS 2600 ROM Carts w/0840 bankswitch")
+DEFINE_DEVICE_TYPE(A26_ROM_0FA0,  a26_rom_0fa0_device,  "vcs_0fa0",  "Atari VCS 2600 ROM Carts w/0FA0 bankswitch")
+DEFINE_DEVICE_TYPE(A26_ROM_03E0,  a26_rom_03e0_device,  "vcs_03e0",  "Atari VCS 2600 ROM Carts w/03E0 bankswitch")
 DEFINE_DEVICE_TYPE(A26_ROM_CV,    a26_rom_cv_device,    "vcs_cv",    "Atari VCS 2600 ROM Carts w/Commavid bankswitch")
 DEFINE_DEVICE_TYPE(A26_ROM_DC,    a26_rom_dc_device,    "vcs_dc",    "Atari VCS 2600 ROM Carts w/Dynacom bankswitch")
 DEFINE_DEVICE_TYPE(A26_ROM_FV,    a26_rom_fv_device,    "vcs_fv",    "Atari VCS 2600 ROM Carts w/FV bankswitch")
@@ -196,6 +207,166 @@ a26_rom_f8_sw_device::a26_rom_f8_sw_device(const machine_config &mconfig, const 
 
 
 /*-------------------------------------------------
+ "EF", "DF" and "BF Bankswitch" Carts:
+ the F8/F6/F4 scheme extended to more 4K banks, with
+ the hotspots further down:
+ EF: 16 banks (64K), read/write access to 0x1fe0-0x1fef
+ DF: 32 banks (128K), read/write access to 0x1fc0-0x1fdf
+ BF: 64 banks (256K), read/write access to 0x1f80-0x1fbf
+ The "SC" versions (EFSC, DFSC, BFSC) add the 128
+ bytes of Super Chip RAM, like F8SC etc.
+ Which bank the boards come up in is not documented:
+ we use the ones the homebrew using these boards is
+ known to start from.
+
+ GAMES: Homestar Runner RPG (EF), and other homebrew
+
+ -------------------------------------------------*/
+
+a26_rom_ef_device::a26_rom_ef_device(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, uint32_t clock, offs_t hotspot, uint8_t banks, uint8_t start_bank, uint8_t start_bank_sc)
+	: a26_rom_f6_device(mconfig, type, tag, owner, clock)
+	, m_hotspot(hotspot)
+	, m_banks(banks)
+	, m_start_bank(start_bank)
+	, m_start_bank_sc(start_bank_sc)
+	, m_rom_banks(1)
+{
+}
+
+a26_rom_ef_device::a26_rom_ef_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+	: a26_rom_ef_device(mconfig, A26_ROM_EF, tag, owner, clock, 0x1fe0, 16, 1, 15)
+{
+}
+
+a26_rom_df_device::a26_rom_df_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+	: a26_rom_ef_device(mconfig, A26_ROM_DF, tag, owner, clock, 0x1fc0, 32, 15, 15)
+{
+}
+
+a26_rom_bf_device::a26_rom_bf_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+	: a26_rom_ef_device(mconfig, A26_ROM_BF, tag, owner, clock, 0x1f80, 64, 1, 15)
+{
+}
+
+uint8_t a26_rom_ef_device::get_start_bank()
+{
+	return (is_ram_present(0x80) ? m_start_bank_sc : m_start_bank) % m_rom_banks;
+}
+
+void a26_rom_ef_device::install_memory_handlers(address_space *space)
+{
+	// smaller images just repeat
+	m_rom_banks = std::clamp<uint32_t>(get_rom_size() / 0x1000, 1, m_banks);
+
+	m_bank->configure_entries(0, m_rom_banks, get_rom_base(), 0x1000);
+	space->install_read_bank(0x1000, 0x1fff, m_bank);
+	space->install_write_handler(m_hotspot, m_hotspot + m_banks - 1, write8sm_delegate(*this, FUNC(a26_rom_ef_device::switch_bank)));
+	install_super_chip_handlers(space);
+	space->install_read_tap(m_hotspot, m_hotspot + m_banks - 1, "bank",
+			[this] (offs_t address, u8 &, u8) { if (!machine().side_effects_disabled()) switch_bank(address - m_hotspot, 0); });
+}
+
+void a26_rom_ef_device::switch_bank(offs_t offset, uint8_t data)
+{
+	m_bank->set_entry(offset % m_rom_banks);
+}
+
+
+
+/*-------------------------------------------------
+ "SB Bankswitch" (SUPERbanking) Carts:
+ 32 or 64 4K banks (128K or 256K), selected by
+ read/write access to 0x0800-0x0fff (A12 = 0, A11 =
+ 1): the low address bits give the bank, i.e.
+ 0x0800-0x081f or 0x0800-0x083f and their mirrors.
+ The board starts in its last bank.
+
+ GAMES: homebrew
+
+ -------------------------------------------------*/
+
+a26_rom_sb_device::a26_rom_sb_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+	: a26_rom_base_device(mconfig, A26_ROM_SB, tag, owner, clock)
+	, m_bank(*this, "bank")
+	, m_banks(1)
+{
+}
+
+void a26_rom_sb_device::device_reset()
+{
+	m_bank->set_entry(m_banks - 1);
+}
+
+void a26_rom_sb_device::install_memory_handlers(address_space *space)
+{
+	m_banks = std::clamp<uint32_t>(get_rom_size() / 0x1000, 1, 64);
+	m_bank->configure_entries(0, m_banks, get_rom_base(), 0x1000);
+
+	space->install_read_bank(0x1000, 0x1fff, m_bank);
+	space->install_readwrite_tap(0x0800, 0x0fff, "bank",
+			[this] (offs_t address, u8 &, u8) { if (!machine().side_effects_disabled()) m_bank->set_entry((address & 0x7f) % m_banks); },
+			[this] (offs_t address, u8 &, u8) { if (!machine().side_effects_disabled()) m_bank->set_entry((address & 0x7f) % m_banks); });
+}
+
+
+
+/*-------------------------------------------------
+ Menu Driven Megacart (MDM):
+ a multicart of up to 128 4K banks. Read/write access
+ to 0x0800-0x0bff selects the bank in the low byte
+ of the address; with bit 7 of that byte set, the
+ bank (bits 0-6) is selected and switching is locked
+ until the next reset, which also goes back to bank
+ 0 and its menu. (The original design by Edwin Blink
+ decoded 0x0800-0x0fff; this is the modified one with
+ 0x0800-0x0bff.)
+
+ GAMES: homebrew multicarts
+
+ -------------------------------------------------*/
+
+a26_rom_mdm_device::a26_rom_mdm_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+	: a26_rom_base_device(mconfig, A26_ROM_MDM, tag, owner, clock)
+	, m_bank(*this, "bank")
+	, m_banks(1)
+	, m_locked(false)
+{
+}
+
+void a26_rom_mdm_device::device_start()
+{
+	save_item(NAME(m_locked));
+}
+
+void a26_rom_mdm_device::device_reset()
+{
+	m_bank->set_entry(0);
+	m_locked = false;
+}
+
+void a26_rom_mdm_device::install_memory_handlers(address_space *space)
+{
+	m_banks = std::clamp<uint32_t>(get_rom_size() / 0x1000, 1, 128);
+	m_bank->configure_entries(0, m_banks, get_rom_base(), 0x1000);
+
+	space->install_read_bank(0x1000, 0x1fff, m_bank);
+	space->install_readwrite_tap(0x0800, 0x0bff, "bank",
+			[this] (offs_t address, u8 &, u8) { if (!machine().side_effects_disabled()) switch_bank(address); },
+			[this] (offs_t address, u8 &, u8) { if (!machine().side_effects_disabled()) switch_bank(address); });
+}
+
+void a26_rom_mdm_device::switch_bank(offs_t address)
+{
+	if (m_locked)
+		return;
+
+	m_bank->set_entry((address & 0x7f) % m_banks);
+	m_locked = BIT(address, 7);
+}
+
+
+
+/*-------------------------------------------------
  "FA Bankswitch" Carts:
  read/write access to 0x1ff8-0x1ffa determines the
  4K ROM bank to be read
@@ -221,6 +392,103 @@ void a26_rom_fa_device::install_memory_handlers(address_space *space)
 			[this] (offs_t address, u8 &, u8) { if (!machine().side_effects_disabled()) switch_bank(address - 0x1ff8, 0); });
 	space->install_read_handler(0x1100, 0x11ff, read8sm_delegate(*this, FUNC(a26_rom_fa_device::read_ram)));
 	space->install_write_handler(0x1000, 0x10ff, write8sm_delegate(*this, FUNC(a26_rom_fa_device::write_ram)));
+}
+
+
+
+/*-------------------------------------------------
+ "FA2 Bankswitch" Carts:
+ the CBS RAM Plus scheme extended to 6 or 7 4K banks
+ (selected by read/write access to 0x1ff5-0x1ffa or
+ 0x1ffb) by the Harmony cart, with the same 256 bytes
+ of RAM (read port 0x1100-0x11ff, write port
+ 0x1000-0x10ff).
+ Images come as 24K or 28K of banks, or with the
+ Harmony's 1K ARM driver in front of them (29K, or
+ 32K padded): the driver is skipped.
+ Accessing 0x1ff4 asks the Harmony to load (RAM byte
+ 0xff = 1) or save (2) the RAM from/to its flash; bit 6
+ of the value read there tells whether it is still
+ busy, and the game waits for it running from the
+ console's RAM. Here the operation is done at once,
+ and the flash is kept in the nvram folder; a load
+ before the first save leaves the RAM as it is.
+
+ GAMES: Star Castle Arcade (homebrew)
+
+ -------------------------------------------------*/
+
+a26_rom_fa2_device::a26_rom_fa2_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+	: a26_rom_f6_device(mconfig, A26_ROM_FA2, tag, owner, clock)
+	, device_nvram_interface(mconfig, *this)
+	, m_flash{ }
+	, m_flash_saved(false)
+{
+}
+
+void a26_rom_fa2_device::device_start()
+{
+	a26_rom_f6_device::device_start();
+
+	save_item(NAME(m_flash));
+	save_item(NAME(m_flash_saved));
+}
+
+void a26_rom_fa2_device::nvram_default()
+{
+	std::fill(std::begin(m_flash), std::end(m_flash), 0);
+	m_flash_saved = false;
+}
+
+bool a26_rom_fa2_device::nvram_read(util::read_stream &file)
+{
+	auto const [err, actual] = read(file, m_flash, sizeof(m_flash));
+	m_flash_saved = !err && (actual == sizeof(m_flash));
+	return m_flash_saved;
+}
+
+bool a26_rom_fa2_device::nvram_write(util::write_stream &file)
+{
+	auto const [err, actual] = write(file, m_flash, sizeof(m_flash));
+	return !err;
+}
+
+void a26_rom_fa2_device::flash_access()
+{
+	if (machine().side_effects_disabled() || !is_ram_present(0x100))
+		return;
+
+	switch (m_ram[0xff])
+	{
+	case 1:
+		if (m_flash_saved)
+			std::copy_n(m_flash, sizeof(m_flash), &m_ram[0]);
+		break;
+	case 2:
+		std::copy_n(&m_ram[0], sizeof(m_flash), m_flash);
+		m_flash_saved = true;
+		break;
+	}
+}
+
+void a26_rom_fa2_device::install_memory_handlers(address_space *space)
+{
+	// skip the ARM driver of 29K and 32K images
+	uint32_t const driver = (get_rom_size() > 0x7000) ? 0x400 : 0;
+	uint8_t const banks = std::min<uint32_t>((get_rom_size() - driver) / 0x1000, 7);
+
+	m_bank->configure_entries(0, banks, get_rom_base() + driver, 0x1000);
+	space->install_read_bank(0x1000, 0x1fff, m_bank);
+	space->install_write_handler(0x1ff5, 0x1ff5 + banks - 1, write8sm_delegate(*this, FUNC(a26_rom_fa2_device::switch_bank)));
+	space->install_read_tap(0x1ff5, 0x1ff5 + banks - 1, "bank",
+			[this] (offs_t address, u8 &, u8) { if (!machine().side_effects_disabled()) switch_bank(address - 0x1ff5, 0); });
+	space->install_read_handler(0x1100, 0x11ff, read8sm_delegate(*this, FUNC(a26_rom_fa2_device::read_ram)));
+	space->install_write_handler(0x1000, 0x10ff, write8sm_delegate(*this, FUNC(a26_rom_fa2_device::write_ram)));
+	// flash load/save of the RAM, done at once: never busy
+	space->install_read_tap(0x1ff4, 0x1ff4, "flash",
+			[this] (offs_t, u8 &data, u8) { flash_access(); data &= ~0x40; });
+	space->install_write_tap(0x1ff4, 0x1ff4, "flash_w",
+			[this] (offs_t, u8 &, u8) { flash_access(); });
 }
 
 
@@ -330,8 +598,9 @@ void a26_rom_3e_device::device_reset()
 
 void a26_rom_3e_device::install_memory_handlers(address_space *space)
 {
-	m_rom_bank_mask = (get_rom_size() / 0x800) - 1;
-	m_ram_bank_mask = (get_ram_size() / 0x400) - 1;
+	// the bank numbers wrap around at the number of banks (a power of 2 on real boards)
+	m_rom_bank_mask = std::max<uint32_t>(get_rom_size() / 0x800, 1) - 1;
+	m_ram_bank_mask = std::max<uint32_t>(get_ram_size() / 0x400, 1) - 1;
 	m_rom_bank->configure_entries(0, m_rom_bank_mask + 1, get_rom_base(), 0x800);
 	m_ram_bank->configure_entries(0, m_ram_bank_mask + 1, get_ram_base(), 0x400);
 
@@ -352,13 +621,13 @@ void a26_rom_3e_device::install_memory_handlers(address_space *space)
 
 void a26_rom_3e_device::select_ram_bank(offs_t address, uint8_t data)
 {
-	m_ram_bank->set_entry(data & m_ram_bank_mask);
+	m_ram_bank->set_entry(data % (m_ram_bank_mask + 1));
 	m_view.select(1);
 }
 
 void a26_rom_3e_device::select_rom_bank(offs_t address, uint8_t data)
 {
-	m_rom_bank->set_entry(data & m_rom_bank_mask);
+	m_rom_bank->set_entry(data % (m_rom_bank_mask + 1));
 	m_view.select(0);
 }
 
@@ -389,7 +658,8 @@ void a26_rom_3f_device::device_reset()
 
 void a26_rom_3f_device::install_memory_handlers(address_space *space)
 {
-	m_bank_mask = (get_rom_size() / 0x800) - 1;
+	// the bank numbers wrap around at the number of banks (a power of 2 on real boards)
+	m_bank_mask = std::max<uint32_t>(get_rom_size() / 0x800, 1) - 1;
 	m_bank->configure_entries(0, get_rom_size() / 0x800, get_rom_base(), 0x800);
 
 	space->install_read_bank(0x1000, 0x17ff, m_bank);
@@ -401,7 +671,82 @@ void a26_rom_3f_device::install_memory_handlers(address_space *space)
 
 void a26_rom_3f_device::select_bank(offs_t offset, uint8_t data)
 {
-	m_bank->set_entry(data & m_bank_mask);
+	m_bank->set_entry(data % (m_bank_mask + 1));
+}
+
+
+
+/*-------------------------------------------------
+ "3E+ Bankswitch" Carts:
+ a 3E/3F extension with four 1K segments at 1000,
+ 1400, 1800 and 1c00, each of which can hold any 1K
+ ROM bank or 512 byte RAM bank:
+ writing to 0x3f puts ROM bank D5-D0 in segment D7-D6
+ writing to 0x3e puts RAM bank D5-D0 in segment D7-D6,
+ the RAM read port being the first 512 bytes of the
+ segment and the write port the last 512
+ That makes up to 64K of ROM and 32K of RAM. The
+ segments start with the first 1K of ROM, so the
+ reset vector is at the end of the first 1K.
+
+ GAMES: homebrew
+
+ -------------------------------------------------*/
+
+a26_rom_3ep_device::a26_rom_3ep_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+	: a26_rom_base_device(mconfig, A26_ROM_3EP, tag, owner, clock)
+	, m_segment_bank{ 0, 0, 0, 0 }
+	, m_segment_ram{ false, false, false, false }
+{
+}
+
+void a26_rom_3ep_device::device_start()
+{
+	save_item(NAME(m_segment_bank));
+	save_item(NAME(m_segment_ram));
+}
+
+void a26_rom_3ep_device::device_reset()
+{
+	for (int segment = 0; segment < 4; segment++)
+	{
+		m_segment_bank[segment] = 0;
+		m_segment_ram[segment] = false;
+	}
+}
+
+void a26_rom_3ep_device::install_memory_handlers(address_space *space)
+{
+	space->install_read_handler(0x1000, 0x1fff, read8sm_delegate(*this, FUNC(a26_rom_3ep_device::read)));
+	space->install_write_handler(0x1000, 0x1fff, write8sm_delegate(*this, FUNC(a26_rom_3ep_device::write)));
+	space->install_write_tap(0x3e, 0x3e, "ram_bank",
+			[this] (offs_t, u8 &data, u8) { if (!machine().side_effects_disabled()) select_bank(data, true); });
+	space->install_write_tap(0x3f, 0x3f, "rom_bank",
+			[this] (offs_t, u8 &data, u8) { if (!machine().side_effects_disabled()) select_bank(data, false); });
+}
+
+void a26_rom_3ep_device::select_bank(uint8_t data, bool ram)
+{
+	m_segment_bank[data >> 6] = data & 0x3f;
+	m_segment_ram[data >> 6] = ram;
+}
+
+uint8_t a26_rom_3ep_device::read(offs_t offset)
+{
+	int const segment = offset >> 10;
+	if (!m_segment_ram[segment])
+		return m_rom[(m_segment_bank[segment] * 0x400 + (offset & 0x3ff)) % m_rom_size];
+	else if (!BIT(offset, 9) && !m_ram.empty())
+		return m_ram[(m_segment_bank[segment] * 0x200 + (offset & 0x1ff)) % m_ram.size()];
+	else
+		return 0xff;
+}
+
+void a26_rom_3ep_device::write(offs_t offset, uint8_t data)
+{
+	int const segment = offset >> 10;
+	if (m_segment_ram[segment] && BIT(offset, 9) && !m_ram.empty())
+		m_ram[(m_segment_bank[segment] * 0x200 + (offset & 0x1ff)) % m_ram.size()] = data;
 }
 
 
@@ -473,8 +818,14 @@ void a26_rom_e0_device::switch_bank(offs_t offset, uint8_t data)
  four different chunks forming the other 1K of RAM
  (the bank is selected by accessing 0x1fe8-0x1feb)
 
+ There are also 8K and 12K variants (4 or 6 2K
+ banks, the last one fixed at 1800-1fff): the
+ hotspots below 0x1fe7 count down from 0x1fe6 to
+ the first bank, i.e. on an 8K board 0x1fe4-0x1fe6
+ select banks 0-2 (sometimes called "E78K").
+
  GAMES: M Network 16K games like Burgertime and
- Bump'n Jump
+ Bump'n Jump, 8K Bump'n Jump
 
  -------------------------------------------------*/
 
@@ -484,6 +835,7 @@ a26_rom_e7_device::a26_rom_e7_device(const machine_config &mconfig, const char *
 	, m_lo_ram_bank(*this, "low_ram")
 	, m_hi_ram_bank(*this, "high_ram")
 	, m_view(*this, "view")
+	, m_banks(8)
 {
 }
 
@@ -495,7 +847,8 @@ void a26_rom_e7_device::device_reset()
 
 void a26_rom_e7_device::install_memory_handlers(address_space *space)
 {
-	m_rom_bank->configure_entries(0, 8, get_rom_base(), 0x800);
+	m_banks = std::min<uint32_t>(get_rom_size() / 0x800, 8);
+	m_rom_bank->configure_entries(0, m_banks, get_rom_base(), 0x800);
 	m_lo_ram_bank->configure_entry(0, get_ram_base() + 0x400);
 	m_hi_ram_bank->configure_entries(0, 4, get_ram_base(), 0x100);
 
@@ -507,7 +860,7 @@ void a26_rom_e7_device::install_memory_handlers(address_space *space)
 	m_view[1].install_write_bank(0x1000, 0x13ff, m_lo_ram_bank);
 	m_view[1].install_read_bank(0x1400, 0x17ff, m_lo_ram_bank);
 
-	space->install_rom(0x1800, 0x1fff, get_rom_base() + 7 * 0x800);
+	space->install_rom(0x1800, 0x1fff, get_rom_base() + (m_banks - 1) * 0x800);
 	space->install_write_bank(0x1800, 0x18ff, m_hi_ram_bank);
 	space->install_read_bank(0x1900, 0x19ff, m_hi_ram_bank);
 	space->install_write_handler(0x1fe0, 0x1fe7, write8sm_delegate(*this, FUNC(a26_rom_e7_device::switch_rom_bank)));
@@ -521,7 +874,10 @@ void a26_rom_e7_device::install_memory_handlers(address_space *space)
 void a26_rom_e7_device::switch_rom_bank(offs_t offset, uint8_t data)
 {
 	m_view.select(offset == 0x07 ? 1 : 0);
-	m_rom_bank->set_entry(offset);
+	if (offset == 0x07)
+		m_rom_bank->set_entry(m_banks - 1);
+	else
+		m_rom_bank->set_entry((offset + m_banks * 2 - 8) % m_banks);
 }
 
 void a26_rom_e7_device::switch_ram_bank(offs_t offset, uint8_t data)
@@ -542,15 +898,27 @@ void a26_rom_e7_device::switch_ram_bank(offs_t offset, uint8_t data)
 
  -------------------------------------------------*/
 
-a26_rom_ua_device::a26_rom_ua_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
-	: a26_rom_base_device(mconfig, A26_ROM_UA, tag, owner, clock)
+a26_rom_ua_device::a26_rom_ua_device(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, uint32_t clock, uint8_t swap)
+	: a26_rom_base_device(mconfig, type, tag, owner, clock)
 	, m_bank(*this, "bank")
+	, m_swap(swap)
+{
+}
+
+a26_rom_ua_device::a26_rom_ua_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+	: a26_rom_ua_device(mconfig, A26_ROM_UA, tag, owner, clock, 0)
+{
+}
+
+// images of UA carts dumped with the two banks the other way round
+a26_rom_uasw_device::a26_rom_uasw_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+	: a26_rom_ua_device(mconfig, A26_ROM_UASW, tag, owner, clock, 1)
 {
 }
 
 void a26_rom_ua_device::device_reset()
 {
-	m_bank->set_entry(0);
+	m_bank->set_entry(m_swap);
 }
 
 void a26_rom_ua_device::install_memory_handlers(address_space *space)
@@ -565,7 +933,128 @@ void a26_rom_ua_device::install_memory_handlers(address_space *space)
 
 void a26_rom_ua_device::change_bank(offs_t offset)
 {
-	m_bank->set_entry((offset >> 6) & 1);
+	m_bank->set_entry(((offset >> 6) & 1) ^ m_swap);
+}
+
+
+
+/*-------------------------------------------------
+ "0840 Bankswitch" (EconoBanking) Carts:
+ two 4K banks, selected by read/write access to an
+ address with A12 = 0 and A11 = 1: A6 gives the bank,
+ i.e. 0x0800 selects bank 0, 0x0840 bank 1
+
+ GAMES: homebrew
+
+ -------------------------------------------------*/
+
+a26_rom_0840_device::a26_rom_0840_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+	: a26_rom_base_device(mconfig, A26_ROM_0840, tag, owner, clock)
+	, m_bank(*this, "bank")
+{
+}
+
+void a26_rom_0840_device::device_reset()
+{
+	m_bank->set_entry(0);
+}
+
+void a26_rom_0840_device::install_memory_handlers(address_space *space)
+{
+	m_bank->configure_entries(0, 2, get_rom_base(), 0x1000);
+
+	space->install_read_bank(0x1000, 0x1fff, m_bank);
+	space->install_readwrite_tap(0x0800, 0x0fff, "bank",
+			[this] (offs_t address, u8 &, u8) { if (!machine().side_effects_disabled()) m_bank->set_entry(BIT(address, 6)); },
+			[this] (offs_t address, u8 &, u8) { if (!machine().side_effects_disabled()) m_bank->set_entry(BIT(address, 6)); });
+}
+
+
+
+/*-------------------------------------------------
+ "0FA0 Bankswitch" Carts:
+ two 4K banks, selected by read/write access to
+ 0x0fa0 (bank 0) or 0x0fc0 (bank 1). Only A12, A10,
+ A9, A7, A6 and A5 are decoded, so 0x06a0 / 0x06c0
+ with any of A11, A8 and A4-A0 work as well. The
+ board starts in bank 1.
+
+ GAMES: Brazilian releases (Fotomania)
+
+ -------------------------------------------------*/
+
+a26_rom_0fa0_device::a26_rom_0fa0_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+	: a26_rom_base_device(mconfig, A26_ROM_0FA0, tag, owner, clock)
+	, m_bank(*this, "bank")
+{
+}
+
+void a26_rom_0fa0_device::device_reset()
+{
+	m_bank->set_entry(1);
+}
+
+void a26_rom_0fa0_device::install_memory_handlers(address_space *space)
+{
+	m_bank->configure_entries(0, 2, get_rom_base(), 0x1000);
+
+	space->install_read_bank(0x1000, 0x1fff, m_bank);
+	space->install_readwrite_tap(0x06a0, 0x06bf, 0x0900, "bank0",
+			[this] (offs_t, u8 &, u8) { if (!machine().side_effects_disabled()) m_bank->set_entry(0); },
+			[this] (offs_t, u8 &, u8) { if (!machine().side_effects_disabled()) m_bank->set_entry(0); });
+	space->install_readwrite_tap(0x06c0, 0x06df, 0x0900, "bank1",
+			[this] (offs_t, u8 &, u8) { if (!machine().side_effects_disabled()) m_bank->set_entry(1); },
+			[this] (offs_t, u8 &, u8) { if (!machine().side_effects_disabled()) m_bank->set_entry(1); });
+}
+
+
+
+/*-------------------------------------------------
+ "03E0 Bankswitch" Carts:
+ Parker Bros. 8K games (E0) on a Brazilian board:
+ four 1K segments, the last fixed to the last 1K of
+ ROM, the others selected by read/write access to an
+ address with A12 = 0 and A9 = A8 = A7 = 1
+ (0x0380-0x03ff and mirrors). A0-A2 give the 1K bank
+ and A4 = 0, A5 = 0, A6 = 0 load it into segment 0, 1,
+ 2 respectively (0x03e0, 0x03d0, 0x03b0 + bank).
+
+ GAMES: Brazilian releases of Parker Bros. games
+
+ -------------------------------------------------*/
+
+a26_rom_03e0_device::a26_rom_03e0_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+	: a26_rom_base_device(mconfig, A26_ROM_03E0, tag, owner, clock)
+	, m_bank(*this, "bank%u", 0U)
+{
+}
+
+void a26_rom_03e0_device::device_reset()
+{
+	m_bank[0]->set_entry(4);
+	m_bank[1]->set_entry(5);
+	m_bank[2]->set_entry(6);
+}
+
+void a26_rom_03e0_device::install_memory_handlers(address_space *space)
+{
+	for (auto &bank : m_bank)
+		bank->configure_entries(0, 8, get_rom_base(), 0x400);
+
+	space->install_read_bank(0x1000, 0x13ff, m_bank[0]);
+	space->install_read_bank(0x1400, 0x17ff, m_bank[1]);
+	space->install_read_bank(0x1800, 0x1bff, m_bank[2]);
+	space->install_rom(0x1c00, 0x1fff, get_rom_base() + 7 * 0x400);
+	space->install_readwrite_tap(0x0380, 0x03ff, 0x0c00, "bank",
+			[this] (offs_t address, u8 &, u8) { if (!machine().side_effects_disabled()) switch_bank(address); },
+			[this] (offs_t address, u8 &, u8) { if (!machine().side_effects_disabled()) switch_bank(address); });
+}
+
+void a26_rom_03e0_device::switch_bank(offs_t address)
+{
+	for (int segment = 0; segment < 3; segment++)
+		if (!BIT(address, 4 + segment))
+			m_bank[segment]->set_entry(address & 7);
 }
 
 

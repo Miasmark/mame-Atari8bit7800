@@ -98,6 +98,85 @@ protected:
 };
 
 
+// ======================> a26_rom_ef_device
+
+class a26_rom_ef_device : public a26_rom_f6_device
+{
+public:
+	a26_rom_ef_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
+
+	virtual void install_memory_handlers(address_space *space) override;
+
+protected:
+	a26_rom_ef_device(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, uint32_t clock, offs_t hotspot, uint8_t banks, uint8_t start_bank, uint8_t start_bank_sc);
+
+	virtual uint8_t get_start_bank() override;
+	void switch_bank(offs_t offset, uint8_t data);
+
+private:
+	offs_t const m_hotspot;
+	uint8_t const m_banks;
+	uint8_t const m_start_bank;
+	uint8_t const m_start_bank_sc;
+	uint8_t m_rom_banks;
+};
+
+
+// ======================> a26_rom_df_device
+
+class a26_rom_df_device : public a26_rom_ef_device
+{
+public:
+	a26_rom_df_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
+};
+
+
+// ======================> a26_rom_bf_device
+
+class a26_rom_bf_device : public a26_rom_ef_device
+{
+public:
+	a26_rom_bf_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
+};
+
+
+// ======================> a26_rom_sb_device
+
+class a26_rom_sb_device : public a26_rom_base_device
+{
+public:
+	a26_rom_sb_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
+
+	virtual void install_memory_handlers(address_space *space) override;
+
+protected:
+	virtual void device_reset() override ATTR_COLD;
+
+	memory_bank_creator m_bank;
+	uint8_t m_banks;
+};
+
+
+// ======================> a26_rom_mdm_device
+
+class a26_rom_mdm_device : public a26_rom_base_device
+{
+public:
+	a26_rom_mdm_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
+
+	virtual void install_memory_handlers(address_space *space) override;
+
+protected:
+	virtual void device_start() override ATTR_COLD;
+	virtual void device_reset() override ATTR_COLD;
+	void switch_bank(offs_t address);
+
+	memory_bank_creator m_bank;
+	uint8_t m_banks;
+	bool m_locked;
+};
+
+
 // ======================> a26_rom_fa_device
 
 class a26_rom_fa_device : public a26_rom_f6_device
@@ -106,6 +185,33 @@ public:
 	a26_rom_fa_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
 
 	virtual void install_memory_handlers(address_space *space) override;
+};
+
+
+// ======================> a26_rom_fa2_device
+
+class a26_rom_fa2_device : public a26_rom_f6_device, public device_nvram_interface
+{
+public:
+	a26_rom_fa2_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
+
+	virtual void install_memory_handlers(address_space *space) override;
+	virtual std::string board_details() const override { return "saves to the Harmony's flash"; }
+
+protected:
+	virtual void device_start() override ATTR_COLD;
+
+	// device_nvram_interface implementation
+	virtual void nvram_default() override;
+	virtual bool nvram_read(util::read_stream &file) override;
+	virtual bool nvram_write(util::write_stream &file) override;
+	virtual bool nvram_can_write() const override { return m_flash_saved; }
+
+private:
+	void flash_access();
+
+	uint8_t m_flash[0x100];  // the Harmony's copy of the RAM
+	bool m_flash_saved;      // false until the game first saves
 };
 
 
@@ -170,6 +276,28 @@ protected:
 };
 
 
+// ======================> a26_rom_3ep_device
+
+class a26_rom_3ep_device : public a26_rom_base_device
+{
+public:
+	a26_rom_3ep_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
+
+	virtual void install_memory_handlers(address_space *space) override;
+
+protected:
+	virtual void device_start() override ATTR_COLD;
+	virtual void device_reset() override ATTR_COLD;
+
+	void select_bank(uint8_t data, bool ram);
+	uint8_t read(offs_t offset);
+	void write(offs_t offset, uint8_t data);
+
+	uint8_t m_segment_bank[4];
+	bool m_segment_ram[4];
+};
+
+
 // ======================> a26_rom_e0_device
 
 class a26_rom_e0_device : public a26_rom_base_device
@@ -205,6 +333,7 @@ protected:
 	memory_bank_creator m_lo_ram_bank;
 	memory_bank_creator m_hi_ram_bank;
 	memory_view m_view;
+	uint8_t m_banks;
 };
 
 
@@ -218,10 +347,71 @@ public:
 	virtual void install_memory_handlers(address_space *space) override;
 
 protected:
+	a26_rom_ua_device(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, uint32_t clock, uint8_t swap);
+
 	virtual void device_reset() override ATTR_COLD;
 	void change_bank(offs_t offset);
 
 	memory_bank_creator m_bank;
+	uint8_t const m_swap;
+};
+
+
+// ======================> a26_rom_uasw_device
+
+class a26_rom_uasw_device : public a26_rom_ua_device
+{
+public:
+	a26_rom_uasw_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
+};
+
+
+// ======================> a26_rom_0840_device
+
+class a26_rom_0840_device : public a26_rom_base_device
+{
+public:
+	a26_rom_0840_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
+
+	virtual void install_memory_handlers(address_space *space) override;
+
+protected:
+	virtual void device_reset() override ATTR_COLD;
+
+	memory_bank_creator m_bank;
+};
+
+
+// ======================> a26_rom_0fa0_device
+
+class a26_rom_0fa0_device : public a26_rom_base_device
+{
+public:
+	a26_rom_0fa0_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
+
+	virtual void install_memory_handlers(address_space *space) override;
+
+protected:
+	virtual void device_reset() override ATTR_COLD;
+
+	memory_bank_creator m_bank;
+};
+
+
+// ======================> a26_rom_03e0_device
+
+class a26_rom_03e0_device : public a26_rom_base_device
+{
+public:
+	a26_rom_03e0_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
+
+	virtual void install_memory_handlers(address_space *space) override;
+
+protected:
+	virtual void device_reset() override ATTR_COLD;
+	void switch_bank(offs_t address);
+
+	memory_bank_array_creator<3> m_bank;
 };
 
 
@@ -378,13 +568,24 @@ DECLARE_DEVICE_TYPE(A26_ROM_F4,    a26_rom_f4_device)
 DECLARE_DEVICE_TYPE(A26_ROM_F6,    a26_rom_f6_device)
 DECLARE_DEVICE_TYPE(A26_ROM_F8,    a26_rom_f8_device)
 DECLARE_DEVICE_TYPE(A26_ROM_F8_SW, a26_rom_f8_sw_device)
+DECLARE_DEVICE_TYPE(A26_ROM_EF,    a26_rom_ef_device)
+DECLARE_DEVICE_TYPE(A26_ROM_DF,    a26_rom_df_device)
+DECLARE_DEVICE_TYPE(A26_ROM_BF,    a26_rom_bf_device)
+DECLARE_DEVICE_TYPE(A26_ROM_SB,    a26_rom_sb_device)
+DECLARE_DEVICE_TYPE(A26_ROM_MDM,   a26_rom_mdm_device)
 DECLARE_DEVICE_TYPE(A26_ROM_FA,    a26_rom_fa_device)
+DECLARE_DEVICE_TYPE(A26_ROM_FA2,   a26_rom_fa2_device)
 DECLARE_DEVICE_TYPE(A26_ROM_FE,    a26_rom_fe_device)
 DECLARE_DEVICE_TYPE(A26_ROM_3E,    a26_rom_3e_device)
 DECLARE_DEVICE_TYPE(A26_ROM_3F,    a26_rom_3f_device)
+DECLARE_DEVICE_TYPE(A26_ROM_3EP,   a26_rom_3ep_device)
 DECLARE_DEVICE_TYPE(A26_ROM_E0,    a26_rom_e0_device)
 DECLARE_DEVICE_TYPE(A26_ROM_E7,    a26_rom_e7_device)
 DECLARE_DEVICE_TYPE(A26_ROM_UA,    a26_rom_ua_device)
+DECLARE_DEVICE_TYPE(A26_ROM_UASW,  a26_rom_uasw_device)
+DECLARE_DEVICE_TYPE(A26_ROM_0840,  a26_rom_0840_device)
+DECLARE_DEVICE_TYPE(A26_ROM_0FA0,  a26_rom_0fa0_device)
+DECLARE_DEVICE_TYPE(A26_ROM_03E0,  a26_rom_03e0_device)
 DECLARE_DEVICE_TYPE(A26_ROM_CV,    a26_rom_cv_device)
 DECLARE_DEVICE_TYPE(A26_ROM_DC,    a26_rom_dc_device)
 DECLARE_DEVICE_TYPE(A26_ROM_FV,    a26_rom_fv_device)

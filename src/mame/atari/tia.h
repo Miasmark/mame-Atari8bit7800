@@ -50,6 +50,13 @@ public:
 	uint8_t read(offs_t offset);
 	void write(offs_t offset, uint8_t data);
 
+	// light gun/pen support: true while a light sensor aimed at (x, y) of the screen bitmap
+	// sees the beam (or the glow it just left) drawing a bright part of the picture
+	bool light_sensor(int x, int y);
+
+	// the Palette setting (atari_tuccitto::WARM ... ORIGINAL), which the 7800 follows too
+	u8 palette_choice() const;
+
 protected:
 	// construction/destruction
 	tia_video_device(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, uint32_t clock);
@@ -59,12 +66,16 @@ protected:
 	// device-level overrides
 	virtual void device_start() override ATTR_COLD;
 	virtual void device_reset() override ATTR_COLD;
+	virtual ioport_constructor device_input_ports() const override ATTR_COLD;
 
 	// device_palette_interface overrides
 	virtual uint32_t palette_entries() const noexcept override { return TIA_PALETTE_LENGTH; }
 
 	void extend_palette();
 	virtual void init_palette() = 0;
+	void update_palette();
+
+	u8 m_palette_choice;    // the palette the pens hold
 	void draw_sprite_helper(uint8_t* p, uint8_t *col, struct player_gfx *gfx, uint8_t GRP, uint8_t COLUP, uint8_t REFP);
 	void draw_missile_helper(uint8_t* p, uint8_t* col, int horz, int skipdelay, int latch, int start, uint8_t RESMP, uint8_t ENAM, uint8_t NUSIZ, uint8_t COLUM);
 	void draw_playfield_helper(uint8_t* p, uint8_t* col, int horz, uint8_t COLU, uint8_t REFPF);
@@ -114,6 +125,7 @@ private:
 
 	required_device<cpu_device> m_maincpu;
 	required_device<tia_device> m_tia;
+	required_ioport m_config;
 
 	struct player_gfx p0gfx;
 	struct player_gfx p1gfx;

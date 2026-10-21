@@ -50,6 +50,8 @@
 #include "maria.h"
 #include "screen.h"
 
+#define DMALIMIT 430
+
 #define LOG_UNK   (1 << 1)
 #define LOG_VIDEO (1 << 2)
 #define LOG_CTRL  (1 << 3)
@@ -68,6 +70,7 @@ DEFINE_DEVICE_TYPE(ATARI_MARIA, atari_maria_device, "atari_maria", "Atari MARIA"
 atari_maria_device::atari_maria_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
 	: device_t(mconfig, ATARI_MARIA, tag, owner, clock)
 	, device_video_interface(mconfig, *this)
+	, device_memory_interface(mconfig, *this)
 	, m_maria_palette{0}
 	, m_line_ram{0}
 	, m_active_buffer(0)
@@ -87,6 +90,7 @@ atari_maria_device::atari_maria_device(const machine_config &mconfig, const char
 	, m_rm(0)
 	, m_dli(false)
 	, m_charbase(0)
+	, m_dma_config("dma", ENDIANNESS_LITTLE, 8, 16, 0)
 	, m_dmaspace(*this, finder_base::DUMMY_TAG, -1, 8)
 	, m_dma_wait_cb(*this)
 	, m_halt_cb(*this)
@@ -94,6 +98,11 @@ atari_maria_device::atari_maria_device(const machine_config &mconfig, const char
 {
 }
 
+
+device_memory_interface::space_config_vector atari_maria_device::memory_space_config() const
+{
+	return space_config_vector { std::make_pair(AS_DMA, &m_dma_config) };
+}
 
 void atari_maria_device::device_start()
 {
@@ -205,6 +214,11 @@ void atari_maria_device::draw_scanline()
 {
 	int cells = 0;
 
+	// the working buffer starts each line clear, DMA on or off (the a7800 fork's way: the line is
+	// shown from the other buffer, pixel by pixel, while this one is filled)
+	for (int i = 0; i < LINERAM_SIZE; i++)
+		m_line_ram[m_active_buffer][i] = 0;
+
 	if (m_dmaon)
 	{
 		// All lines in a zone have the same initial DMA startup time. We'll adjust
@@ -216,35 +230,34 @@ void atari_maria_device::draw_scanline()
 		uint16_t dl = m_dl;
 
 		/* DMA */
-		/* Step through DL's while we're within maximum rendering time. */
-		/*  max render time = ( scanline length - DMA start ) */
-		/*     426          = (     454         -     28    ) */
+		/* Step through DL's while we're within maximum rendering time. The a7800 fork measured
+		   430 (it was 426: scanline length 454 less the DMA start). */
 
 		uint16_t graph_adr, data_addr;
 		int width;
 		uint8_t hpos, pal;
 		bool ind;
-		while (((read_byte(dl + 1) & 0x5f) != 0) && (maria_cycles < 426))
+		while (((read_dl(dl + 1) & 0x5f) != 0) && (maria_cycles < DMALIMIT))
 		{
 			/* Extended header */
-			if (!(read_byte(dl + 1) & 0x1f)) // bit 4 also needs to set?
+			if (!(read_dl(dl + 1) & 0x1f)) // bit 4 also needs to set?
 			{
-				graph_adr = (read_byte(dl + 2) << 8) | read_byte(dl);
-				width = ((read_byte(dl + 3) ^ 0xff) & 0x1f) + 1;
-				hpos = read_byte(dl + 4);
-				pal = read_byte(dl + 3) >> 5;
-				m_write_mode = BIT(read_byte(dl + 1), 7);
-				ind = BIT(read_byte(dl + 1), 5);
+				graph_adr = (read_dl(dl + 2) << 8) | read_dl(dl);
+				width = ((read_dl(dl + 3) ^ 0xff) & 0x1f) + 1;
+				hpos = read_dl(dl + 4);
+				pal = read_dl(dl + 3) >> 5;
+				m_write_mode = BIT(read_dl(dl + 1), 7);
+				ind = BIT(read_dl(dl + 1), 5);
 				dl += 5;
 				maria_cycles += 10;
 			}
 			/* Normal header */
 			else
 			{
-				graph_adr = (read_byte(dl + 2) << 8) | read_byte(dl);
-				width = ((read_byte(dl + 1) ^ 0xff) & 0x1f) + 1;
-				hpos = read_byte(dl + 3);
-				pal = read_byte(dl + 1) >> 5;
+				graph_adr = (read_dl(dl + 2) << 8) | read_dl(dl);
+				width = ((read_dl(dl + 1) ^ 0xff) & 0x1f) + 1;
+				hpos = read_dl(dl + 3);
+				pal = read_dl(dl + 1) >> 5;
 				ind = false;
 				dl += 4;
 				maria_cycles += 8;
@@ -252,9 +265,12 @@ void atari_maria_device::draw_scanline()
 
 			/*LOGVIDEO("%x DL: ADR=%x  width=%x  hpos=%x  pal=%x  mode=%x  ind=%x\n", screen().vpos(), graph_adr, width, hpos, pal, m_write_mode, ind);*/
 
+			// the first hole in a header's graphics costs MARIA a 3-cycle fetch, the rest are free
+			bool dma_hole_known = false;
+
 			for (int x = 0; x < width; x++)
 			{
-				if (maria_cycles >= 426) // ensure we haven't overrun the maximum render time
+				if (maria_cycles >= DMALIMIT) // ensure we haven't overrun the maximum render time
 					break;
 
 				/* Do indirect mode */
@@ -263,7 +279,12 @@ void atari_maria_device::draw_scanline()
 					const uint8_t c = read_byte(graph_adr + x) & 0xff;
 					data_addr = (m_charbase | c) + (m_offset << 8);
 					if (is_holey(data_addr))
+					{
+						if (!dma_hole_known)
+							maria_cycles += 3;
+						dma_hole_known = true;
 						continue;
+					}
 
 					maria_cycles += 3;
 					if (m_cwidth) // two data bytes per map byte
@@ -285,7 +306,12 @@ void atari_maria_device::draw_scanline()
 				{
 					data_addr = graph_adr + x + (m_offset << 8);
 					if (is_holey(data_addr))
+					{
+						if (!dma_hole_known)
+							maria_cycles += 3;
+						dma_hole_known = true;
 						continue;
+					}
 					cells = write_line_ram(data_addr, hpos, pal);
 					hpos += cells;
 					maria_cycles += 3;
@@ -296,13 +322,13 @@ void atari_maria_device::draw_scanline()
 		// Last Line post-render DMA cycle penalties...
 		if (m_offset == 0)
 		{
-			maria_cycles += 6; // extra shutdown time
-			if (BIT(read_byte(m_dll + 3), 7))
+			maria_cycles += 8; // extra shutdown time (the fork measured 8; it was 6)
+			if (BIT(read_dl(m_dll + 3), 7))
 				maria_cycles += 17; // interrupt overhead
 		}
 
 		// If MARIA used up all of the DMA time then the CPU can't run until next line...
-		if (maria_cycles >= 426)
+		if (maria_cycles >= DMALIMIT)
 		{
 			m_halt_cb(ASSERT_LINE);
 			m_wsync = true;
@@ -315,49 +341,72 @@ void atari_maria_device::draw_scanline()
 		if (!m_wsync)
 			m_dma_wait_cb(maria_cycles);
 	}
+}
 
-	// draw line buffer to screen
-	m_active_buffer ^= 1; // switch buffers
+
+// The line MARIA drew last is shown one pixel at a time (the driver calls this every half CPU
+// cycle across the visible part of the line), so a register write in the middle of a scanline
+// shows up in the middle of it.
+void atari_maria_device::display_visible(int pixelx)
+{
 	uint16_t *const scanline = &m_bitmap.pix(screen().vpos());
 
-	for (int i = 0; i < LINERAM_SIZE; i++)
+	const uint8_t standby_buffer = m_active_buffer ^ 1; // the line drawn on the previous DMA
+
+	uint8_t d, pixel_cell;
+	switch (m_rm)
 	{
-		uint8_t d, pixel_cell;
-		switch (m_rm)
-		{
-			case 0x00:  /* 160A, 160B */
-			case 0x01:  /* 160A, 160B */
-				pixel_cell =  m_line_ram[m_active_buffer][i];
-				scanline[2 * i] = m_maria_palette[pixel_cell];
-				scanline[2 * i + 1] = m_maria_palette[pixel_cell];
-				break;
+		case 0x00:  /* 160A, 160B */
+		case 0x01:  /* 160A, 160B */
+			pixel_cell = m_line_ram[standby_buffer][pixelx];
+			scanline[2 * pixelx] = m_maria_palette[pixel_cell];
+			scanline[2 * pixelx + 1] = m_maria_palette[pixel_cell];
+			break;
 
-			case 0x02: /* 320B, 320D */
-				pixel_cell = m_line_ram[m_active_buffer][i];
-				d = (pixel_cell & 0x10) | (pixel_cell & 0x02) | ((pixel_cell >> 3) & 1); // b4 0 0 b1 b3
-				scanline[2 * i] = m_maria_palette[d];
-				d = (pixel_cell & 0x10) | ((pixel_cell << 1) & 0x02) | ((pixel_cell >> 2) & 1); // b4 0 0 b0 b2
-				scanline[2 * i + 1] = m_maria_palette[d];
-				break;
+		case 0x02: /* 320B, 320D */
+			pixel_cell = m_line_ram[standby_buffer][pixelx];
+			d = (pixel_cell & 0x10) | (pixel_cell & 0x02) | ((pixel_cell >> 3) & 1); // b4 0 0 b1 b3
+			scanline[2 * pixelx] = m_maria_palette[d];
+			d = (pixel_cell & 0x10) | ((pixel_cell << 1) & 0x02) | ((pixel_cell >> 2) & 1); // b4 0 0 b0 b2
+			scanline[2 * pixelx + 1] = m_maria_palette[d];
+			break;
 
-			case 0x03:  /* 320A, 320C */
-				pixel_cell = m_line_ram[m_active_buffer][i];
-				d = (pixel_cell & 0x1c) | (pixel_cell & 0x02); // b4 b3 b2 b1 0
-				scanline[2 * i] = m_maria_palette[d];
-				d = (pixel_cell & 0x1c) | ((pixel_cell << 1) & 0x02); // b4 b3 b2 b0 0
-				scanline[2 * i + 1] = m_maria_palette[d];
-				break;
-		}
-
-		if (m_color_kill) //remove color if there's no colorburst signal
-		{
-			scanline[2 * i] &= 0x0f;
-			scanline[2 * i + 1] &= 0x0f;
-		}
+		case 0x03:  /* 320A, 320C */
+			pixel_cell = m_line_ram[standby_buffer][pixelx];
+			d = (pixel_cell & 0x1c) | (pixel_cell & 0x02); // b4 b3 b2 b1 0
+			scanline[2 * pixelx] = m_maria_palette[d];
+			d = (pixel_cell & 0x1c) | ((pixel_cell << 1) & 0x02); // b4 b3 b2 b0 0
+			scanline[2 * pixelx + 1] = m_maria_palette[d];
+			break;
 	}
 
-	for (int i = 0; i < LINERAM_SIZE; i++) // buffer automaticaly cleared once displayed
-		m_line_ram[m_active_buffer][i] = 0;
+	if (m_color_kill) //remove color if there's no colorburst signal
+	{
+		scanline[2 * pixelx] &= 0x0f;
+		scanline[2 * pixelx + 1] &= 0x0f;
+	}
+}
+
+
+// A display list and the display list list are read through here. On a bankset cartridge they must
+// live in console RAM, not in the cartridge's ROM or RAM ("Your DL must be stored in console ram,
+// rather than bankset cart ram", 7800.8bitdev.org, Bankset Bankswitching): MARIA does not get them
+// from there. Such a fetch reads 0, which ends the list, and says so once. (Enabling DMA in the
+// middle of a frame makes MARIA read a list from the stale pointer it held, in zero page: that can
+// trip this once, at start-up; games switch DMA on in vertical blank.)
+uint8_t atari_maria_device::read_dl(offs_t addr)
+{
+	if (addr >= m_cart_ram_lo && addr <= m_cart_ram_hi)
+	{
+		if (!m_dl_warned)
+		{
+			osd_printf_warning("MARIA fetched a display list from bankset cartridge space ($%04X): unsupported, "
+					"display lists must be in console RAM\n", addr);
+			m_dl_warned = true;
+		}
+		return 0;
+	}
+	return read_byte(addr);
 }
 
 
@@ -383,12 +432,14 @@ void atari_maria_device::startdma(int lines)
 	const int maria_scanline = screen().vpos();
 	const int frame_scanline = maria_scanline % (lines + 1);
 
+	m_active_buffer ^= 1; // switch the working buffer at the start of DMA
+
 	if ((frame_scanline == 16) && m_dmaon)
 	{
 		/* end of vblank */
 		m_dll = m_dpp; // currently only handle changes to dll during vblank
-		m_dl = (read_byte(m_dll + 1) << 8) | read_byte(m_dll + 2);
-		const uint8_t header = read_byte(m_dll);
+		m_dl = (read_dl(m_dll + 1) << 8) | read_dl(m_dll + 2);
+		const uint8_t header = read_dl(m_dll);
 		m_offset = header & 0x0f;
 		m_holey = (header & 0x60) >> 5;
 		m_dli = BIT(header, 7);
@@ -403,8 +454,8 @@ void atari_maria_device::startdma(int lines)
 		if (m_offset == 0)
 		{
 			m_dll += 3;
-			m_dl = (read_byte(m_dll + 1) << 8) | read_byte(m_dll + 2);
-			const uint8_t header = read_byte(m_dll);
+			m_dl = (read_dl(m_dll + 1) << 8) | read_dl(m_dll + 2);
+			const uint8_t header = read_dl(m_dll);
 			m_offset = header & 0x0f;
 			m_holey = (header & 0x60) >> 5;
 			if (BIT(header, 4))

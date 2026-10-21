@@ -96,11 +96,7 @@ E1 Prog ROM 42 DEMON/DIAMOND (CX2615)
 #include "emu.h"
 
 
-#include "bus/vcs/compumat.h"
-#include "bus/vcs/dpc.h"
-#include "bus/vcs/harmony_melody.h"
-#include "bus/vcs/rom.h"
-#include "bus/vcs/scharger.h"
+#include "bus/vcs/vcs_carts.h"
 #include "bus/vcs/vcs_slot.h"
 #include "bus/vcs_ctrl/ctrl.h"
 #include "cpu/m6502/m6507.h"
@@ -149,6 +145,7 @@ protected:
 	void switch_B_w(uint8_t data);
 	void irq_callback(int state);
 	uint16_t a2600_read_input_port(offs_t offset);
+	bool light_sense(int x255, int y255);
 	uint8_t a2600_get_databus_contents(offs_t offset);
 	void a2600_tia_vsync_callback(uint16_t data);
 
@@ -383,6 +380,14 @@ void a2600_base_state::irq_callback(int state)
 {
 }
 
+// light guns: what their sensor sees depends on where the TIA's beam is in the frame the game
+// started with VSYNC, and on what it drew there
+bool a2600_base_state::light_sense(int x255, int y255)
+{
+	const rectangle &visarea = m_screen->visible_area();
+	return m_tia->light_sensor(visarea.left() + x255 * visarea.width() / 256, visarea.top() + y255 * visarea.height() / 256);
+}
+
 uint16_t a2600_base_state::a2600_read_input_port(offs_t offset)
 {
 	switch (offset)
@@ -561,38 +566,10 @@ static INPUT_PORTS_START( tvboy )
 INPUT_PORTS_END
 
 
-static void a2600_cart(device_slot_interface &device)
-{
-	device.option_add("a26_2k_4k", A26_ROM_2K_4K);
-	device.option_add("a26_f4",    A26_ROM_F4);
-	device.option_add("a26_f6",    A26_ROM_F6);
-	device.option_add("a26_f8",    A26_ROM_F8);
-	device.option_add("a26_f8sw",  A26_ROM_F8_SW);
-	device.option_add("a26_fa",    A26_ROM_FA);
-	device.option_add("a26_fe",    A26_ROM_FE);
-	device.option_add("a26_3e",    A26_ROM_3E);
-	device.option_add("a26_3f",    A26_ROM_3F);
-	device.option_add("a26_e0",    A26_ROM_E0);
-	device.option_add("a26_e7",    A26_ROM_E7);
-	device.option_add("a26_ua",    A26_ROM_UA);
-	device.option_add("a26_cv",    A26_ROM_CV);
-	device.option_add("a26_dc",    A26_ROM_DC);
-	device.option_add("a26_fv",    A26_ROM_FV);
-	device.option_add("a26_jvp",   A26_ROM_JVP);
-	device.option_add("a26_cm",    A26_ROM_COMPUMATE);
-	device.option_add("a26_ss",    A26_ROM_SUPERCHARGER);
-	device.option_add("a26_dpc",   A26_ROM_DPC);
-	device.option_add("a26_4in1",  A26_ROM_4IN1);
-	device.option_add("a26_8in1",  A26_ROM_8IN1);
-	device.option_add("a26_32in1", A26_ROM_32IN1);
-	device.option_add("a26_x07",   A26_ROM_X07);
-	device.option_add("a26_harmony",   A26_ROM_HARMONY);
-	device.option_add("a26_f0",    A26_ROM_F0);
-}
 
 void a2600_cons_state::a2600_cartslot(machine_config &config)
 {
-	VCS_CART_SLOT(config, m_cartslot, a2600_cart, nullptr).set_must_be_loaded(true);
+	VCS_CART_SLOT(config, m_cartslot, vcs_cart, nullptr).set_must_be_loaded(true);
 	m_cartslot->set_address_space(m_maincpu, AS_PROGRAM);
 
 	/* software lists */
@@ -629,7 +606,9 @@ void a2600_base_state::a2600_base_ntsc(machine_config &config)
 	m_riot->irq_wr_callback().set(FUNC(a2600_state::irq_callback));
 
 	VCS_CONTROL_PORT(config, m_joy1, vcs_control_port_devices, "joy");
+	m_joy1->set_light_sense_callback(FUNC(a2600_base_state::light_sense));
 	VCS_CONTROL_PORT(config, m_joy2, vcs_control_port_devices, "joy");
+	m_joy2->set_light_sense_callback(FUNC(a2600_base_state::light_sense));
 }
 
 
@@ -662,7 +641,9 @@ void a2600_base_state::a2600_base_pal(machine_config &config)
 	m_riot->irq_wr_callback().set(FUNC(a2600_state::irq_callback));
 
 	VCS_CONTROL_PORT(config, m_joy1, vcs_control_port_devices, "joy");
+	m_joy1->set_light_sense_callback(FUNC(a2600_base_state::light_sense));
 	VCS_CONTROL_PORT(config, m_joy2, vcs_control_port_devices, "joy");
+	m_joy2->set_light_sense_callback(FUNC(a2600_base_state::light_sense));
 }
 
 
