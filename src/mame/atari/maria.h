@@ -75,6 +75,7 @@ private:
 	bool m_kangaroo;
 	uint8_t m_rm;
 	bool m_dli;
+	bool m_first_dma = false;   // the next line drawn is the frame's first DMA (it costs more)
 	uint32_t m_charbase;
 	bitmap_ind16 m_bitmap;
 
