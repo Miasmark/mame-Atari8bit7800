@@ -1709,9 +1709,13 @@ void a7800_state::machine_start()
 	if (has_7800_cart())
 	{
 		// a bankset cartridge: MARIA's display lists belong in console RAM, not in the cartridge's
-		// ROM or RAM (7800.8bitdev.org, Bankset Bankswitching); the 52K halves reach down to $3000
+		// ROM or bank RAM (7800.8bitdev.org, Bankset Bankswitching); the 52K halves reach down to
+		// $3000. RAM at $4000 that both chips share ($2006) is read like console RAM, as on the
+		// MiSTer and Analogue Pocket cores, so only the ROM above it is out of bounds.
 		if (m_cart->get_cart_type() >= A78_BANKSET && m_cart->get_cart_type() <= A78_BANKSET_52K_POK4000)
 			m_maria->set_cart_ram_window((m_cart->get_cart_type() >= A78_BANKSET_52K) ? 0x3000 : 0x4000, 0xffff);
+		else if (m_cart->get_cart_type() == A78_BANKSET_SG_RAM || m_cart->get_cart_type() == A78_BANKSET_SG_RAM_POK800)
+			m_maria->set_cart_ram_window(0x8000, 0xffff);
 		switch (m_cart->get_cart_type())
 		{
 		case A78_HSC:
@@ -1755,6 +1759,7 @@ void a7800_state::machine_start()
 		case A78_BANKSET_SG_POK800:
 		case A78_BANKSET_SG_BANKRAM_POK800:
 		case A78_BANKSET_BANKRAM_POK800:
+		case A78_BANKSET_SG_RAM_POK800:
 			// (with bank RAM, as above: the CPU cannot execute from its own)
 			if (m_cart->get_cart_type() == A78_BANKSET_SG_BANKRAM_POK800 || m_cart->get_cart_type() == A78_BANKSET_BANKRAM_POK800)
 			{
