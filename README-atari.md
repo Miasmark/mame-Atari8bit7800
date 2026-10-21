@@ -51,7 +51,9 @@ mode. With Warm, every colour matches the Pocket core's own screenshots of a col
     BIOS: its 7800-mode cartridge check reads `$FFF8`, which switches their bank. Use `-bios skip`.
 - **BankSet cartridges**, all 11 forms (CPU half and MARIA half, BankSet RAM, 52K halves, POKEY at
   `$4000` or `$0800`), plus the spec's rules: display lists must be in console RAM, and no code may
-  run from cart RAM.
+  run from cart RAM. Also header `$2006` (and `$a006` with POKEY at `$0800`): a SuperGame bankset with
+  one 16K RAM at `$4000` that the CPU and MARIA share, as on the MiSTer and Pocket cores; display
+  lists and code may be in that RAM. All 10 programs of the Bankset Test Suite v1 (`.a78`) pass.
 - **POKEY at `$0800`**, and **dual POKEY** at `$0440`+`$0450` (both chips at half gain).
 - **Activision `.a78` images in the usual block order** now boot.
 - **MARIA timing from the 7800-devtools a7800 fork**, with MARIA's DMA in its own address space, so
