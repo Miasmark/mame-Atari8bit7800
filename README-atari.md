@@ -12,8 +12,8 @@ work merged into current MAME.
 
 Machine Information (in the menu) and Media Control show, under the mounted file, the board it
 runs on and how that was found. For example:
-- 7800: "SuperGame Bankswitch + POKEY (board from the .a78 header, saves to the High Score Cart or a
-  SaveKey in port 2)", or "no header, board detected from the image";
+- 7800: "SuperGame Bankswitch + POKEY (board from the .a78 header, saves to the High Score Cart, or
+  uses a SaveKey or AtariVox in port 2)", or "no header, board detected from the image";
 - 2600: "HARMONY/MELODY, DPC+ driver", "F8 bankswitch, 128 bytes of RAM (Super Chip)",
   "FA2 bankswitch, saves to the Harmony's flash".
 
@@ -56,6 +56,10 @@ mode. With Warm, every colour matches the Pocket core's own screenshots of a col
   one 16K RAM at `$4000` that the CPU and MARIA share, as on the MiSTer and Pocket cores; display
   lists and code may be in that RAM. All 10 programs of the Bankset Test Suite v1 (`.a78`) pass.
 - **POKEY at `$0800`**, and **dual POKEY** at `$0440`+`$0450` (both chips at half gain).
+- **RAM at `$4000` without SuperGame** (header `$0004`, with or without POKEY at `$0450` or `$0800`) on
+  an image under 64K is a flat board with the RAM over `$4000`-`$7fff`, as on the Pocket core; MAME
+  used to make it SuperGame, where a write to `$8000`-`$bfff` would page in the wrong bank (Star
+  Raiders, Mike Saarna's port).
 - **Activision `.a78` images in the usual block order** now boot.
 - **MARIA timing from the 7800-devtools a7800 fork**, with MARIA's DMA in its own address space, so
   debugger and Lua watches can tell its reads from the CPU's; updated to the 7800 Software Guide's
@@ -66,17 +70,25 @@ mode. With Warm, every colour matches the Pocket core's own screenshots of a col
   it runs as before; `-bios skip` still skips it.
 - **High Score Cartridge from its own image:** `-cart "High Score Cartridge.a78" -cart2 game.a78`
   (the software list entry `hiscore` works as before). Its scores are saved in the nvram folder.
-- **SaveKey / AtariVox memory in controller port 2** (Machine Configuration, Controller Port 2):
-  Auto plugs one in when the cartridge's header asks for it; Joystick or SaveKey force the choice.
-  It also works in 2600 mode. The AtariVox's speech is not emulated. Like all MAME nvram, its file is
-  kept per BIOS choice (`nvram/a7800/` with the default BIOS, `nvram/a7800_2/` without a BIOS).
+- **SaveKey / AtariVox in controller port 2** (Machine Configuration, Controller Port 2): Auto plugs
+  one in when the cartridge's header asks for it; Joystick or SaveKey / AtariVox force the choice.
+  It also works in 2600 mode. The AtariVox's voice is there too (see the 2600's AtariVox below).
+  Like all MAME nvram, the memory's file is kept per BIOS choice (`nvram/a7800/` with the default
+  BIOS, `nvram/a7800_2/` without a BIOS).
 
 ## Atari 2600 (`a2600`, `a2600p`)
 
 - **XG-1 light gun** (`-joyport1 xg1`): trigger on pin 1, light sensor on pin 6, seeing what the
   TIA has just drawn where it is aimed. Sentinel and Shooting Arcade could not be tested.
-- **SaveKey / AtariVox memory** for a controller port: `-joyport2 savekey` (or Slot Devices in the
-  menu). The 32K EEPROM is kept in the nvram folder, shared by all games as a real one is.
+- **SaveKey** for a controller port: `-joyport2 savekey` (or Slot Devices in the menu). The 32K
+  EEPROM is kept in the nvram folder, shared by all games as a real one is.
+- **AtariVox**, the SaveKey's memory and a voice: `-joyport2 atarivox`, with a speaker of its own.
+  The SpeakJet's sound tables were never published, so the voice is the openfpga-7800 (Analogue
+  Pocket) core's speech engine, run clock for clock with the core's program and tables: it says what
+  the Pocket says (checked sample for sample against the core's reference over its test cartridge's
+  eight phrases). Its serial control mode follows the SpeakJet's manual (`\0` enters it; `X`, or a
+  backslash and a letter, leaves it), where the core enters it on any backslash; Star Raiders, whose
+  phrases begin with `\V0 `, speaks here and not on the Pocket.
 - **FA2 (Star Castle Arcade) saves** its Hall of Fame to the Harmony's flash, kept in the nvram
   folder.
 - **Frame Blending setting** (Machine Configuration menu, on by default; also used by the 7800's
