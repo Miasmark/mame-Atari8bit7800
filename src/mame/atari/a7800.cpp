@@ -107,6 +107,7 @@
 #include "bus/a7800/a78_carts.h"
 #include "bus/vcs/vcs_carts.h"
 #include "bus/vcs/vcs_slot.h"
+#include "bus/vcs_ctrl/atarivox.h"
 #include "cpu/m6502/m6502.h"
 #include "machine/bankdev.h"
 #include "machine/i2cmem.h"
@@ -139,6 +140,7 @@ public:
 		m_io_console_buttons(*this, "CONSOLE"),
 		m_io_port2(*this, "PORT2"),
 		m_savekey(*this, "savekey"),
+		m_voice(*this, "voice"),
 		m_cart(*this, "cartslot"),
 		m_screen(*this, "screen"),
 		m_palette(*this, "palette"),
@@ -233,6 +235,7 @@ protected:
 	required_ioport m_io_console_buttons;
 	required_ioport m_io_port2;
 	required_device<i2cmem_device> m_savekey;
+	required_device<atarivox_voice_device> m_voice;
 	required_device<a78_cart_slot_device> m_cart;
 	required_device<screen_device> m_screen;
 	required_device<palette_device> m_palette;
@@ -273,10 +276,10 @@ uint8_t a7800_state::riot_joystick_r()
 {
 	uint8_t data = m_io_joysticks->read();
 
-	// a SaveKey in port 2: SDA on pin 3, low when the console or the EEPROM holds it low, and SCL
-	// on pin 4 as the console drives it
+	// a SaveKey or AtariVox in port 2: SDA on pin 3, low when the console or the EEPROM holds it low,
+	// SCL on pin 4 as the console drives it, and the AtariVox's buffer, low while half full, on pin 2
 	if (savekey_in_port2())
-		data = (data & 0xf0) | 0x03 | (m_savekey_scl << 3) | ((m_savekey_sda && m_savekey->read_sda()) << 2);
+		data = (data & 0xf0) | 0x01 | (m_voice->ready_r() << 1) | (m_savekey_scl << 3) | ((m_savekey_sda && m_savekey->read_sda()) << 2);
 	return data;
 }
 
@@ -298,9 +301,12 @@ void a7800_state::riot_joystick_w(uint8_t data)
 	}
 	m_savekey_scl = scl;
 	m_savekey_sda = sda;
+
+	// the AtariVox's speech on pin 1
+	m_voice->line_w(savekey_in_port2() ? BIT(data, 0) : 1);
 }
 
-// a SaveKey (or an AtariVox, whose speech chip is not emulated) in controller port 2 instead of a
+// a SaveKey (or an AtariVox: the same memory, and a voice) in controller port 2 instead of a
 // joystick: as set in the Machine Configuration, or, on Auto, when the cartridge's header asks for one
 bool a7800_state::savekey_in_port2()
 {
@@ -683,7 +689,7 @@ static INPUT_PORTS_START( a7800 )
 
 	PORT_START("PORT2")
 	PORT_CONFNAME(0x03, 0x00, "Controller Port 2")
-	PORT_CONFSETTING(0x00, "Auto (SaveKey if the cartridge asks for one)")
+	PORT_CONFSETTING(0x00, "Auto (SaveKey / AtariVox if the cartridge asks for one)")
 	PORT_CONFSETTING(0x01, "Joystick")
 	PORT_CONFSETTING(0x02, "SaveKey / AtariVox")
 
@@ -1727,6 +1733,7 @@ void a7800_state::machine_start()
 			break;
 		case A78_XB_BOARD:
 		case A78_TYPE0_POK450:
+		case A78_TYPE0_RAM_POK450:
 		case A78_TYPE1_POK450:
 		case A78_TYPE6_POK450:
 		case A78_TYPEA_POK450:
@@ -1751,6 +1758,7 @@ void a7800_state::machine_start()
 			m_maria->space(atari_maria_device::AS_DMA).install_read_handler(0x3000, 0x3fff, read8sm_delegate(*m_cart, FUNC(a78_cart_slot_device::read_30xx)));
 			break;
 		case A78_TYPE0_POK800:
+		case A78_TYPE0_RAM_POK800:
 		case A78_TYPE1_POK800:
 		case A78_TYPE2_POK800:
 		case A78_TYPE6_POK800:
@@ -1900,6 +1908,7 @@ void a7800_state::a7800_common(machine_config &config, uint32_t clock)
 
 	A78_CART_SLOT(config, m_cart, clock/8, a7800_cart, nullptr);
 	I2C_24C256(config, m_savekey);  // a SaveKey in port 2
+	ATARIVOX_VOICE(config, m_voice).add_route(ALL_OUTPUTS, "mono", 1.00);    // and an AtariVox's voice
 	m_cart->set_vcs_image("cartridge2600");
 
 	// 2600 mode: the 2600's bus, its cartridge slot (-cart2600) and the TIA's video

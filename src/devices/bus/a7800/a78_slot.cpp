@@ -353,8 +353,26 @@ static const a78_slot slot_list[] =
 	{ A78_BANKSET_52K,               "a78_bankset_52k" },
 	{ A78_BANKSET_52K_POK4000,       "a78_bankset_52k_p4000" },
 	{ A78_BANKSET_SG_RAM,            "a78_bankset_sg_ram" },
-	{ A78_BANKSET_SG_RAM_POK800,     "a78_bankset_sg_ram_p800" }
+	{ A78_BANKSET_SG_RAM_POK800,     "a78_bankset_sg_ram_p800" },
+	{ A78_TYPE0_RAM,        "a78_ram" },
+	{ A78_TYPE0_RAM_POK450, "a78_p450_ram" },
+	{ A78_TYPE0_RAM_POK800, "a78_p800_ram" }
 };
+
+// RAM at $4000 without the SuperGame bit, on an image under 64K: no bankswitch, the RAM over the
+// ROM's $4000-$7fff (as the openfpga-7800 core has it; validate_header would make it SuperGame), with
+// or without a POKEY at $0450 or $0800. -1 for any other header.
+static int a78_flat_ram_type(int mapper, uint64_t len)
+{
+	if (len >= 0x10000)
+		return -1;
+	switch (mapper & 0xffbf)
+	{
+	case 0x0004: return BIT(mapper, 6) ? A78_TYPE0_RAM_POK450 : A78_TYPE0_RAM;
+	case 0x8004: return BIT(mapper, 6) ? -1 : A78_TYPE0_RAM_POK800;
+	}
+	return -1;
+}
 
 // Bankset carts (header bit $2000) and carts with a POKEY at $0800 (header bit $8000), which
 // the plain header switch does not know. -1 if this header is neither.
@@ -592,8 +610,9 @@ std::pair<std::error_condition, std::string> a78_cart_slot_device::call_load()
 				len = length() - 128;
 			}
 
-			// let's try to auto-fix some common errors in the header
-			mapper = validate_header(get_u16be(&head[53]), true);
+			// let's try to auto-fix some common errors in the header (but RAM at $4000 alone is a board)
+			int const flat_ram = a78_flat_ram_type(get_u16be(&head[53]), len);
+			mapper = validate_header(get_u16be(&head[53]) & ((flat_ram >= 0) ? ~0x04 : ~0), true);
 
 			switch (mapper & 0x2e)
 			{
@@ -641,6 +660,8 @@ std::pair<std::error_condition, std::string> a78_cart_slot_device::call_load()
 			// (for now) mirror ram implies no bankswitch format is used
 			else if ((mapper & 0x0080) == 0x0080)
 				m_type = A78_TYPE8;
+			if (flat_ram >= 0)
+				m_type = flat_ram;
 
 
 			logerror("Cart type: 0x%x\n", m_type);
@@ -656,7 +677,7 @@ std::pair<std::error_condition, std::string> a78_cart_slot_device::call_load()
 			m_savekey = BIT(head[58], 1) || head[56] == 10;
 			if (m_savekey)
 			{
-				osd_printf_info("This cart saves to a SaveKey (or AtariVox) in controller port 2.\n");
+				osd_printf_info("This cart uses a SaveKey or AtariVox (its memory, its voice) in controller port 2.\n");
 				osd_printf_info("It is plugged in there unless Machine Configuration says otherwise.\n");
 			}
 
@@ -698,8 +719,9 @@ void a78_cart_slot_device::alloc_board_memory()
 	if (m_type == A78_MEGACART || (m_type >= A78_VERSABOARD && m_type <= A78_VERSA_POK450)
 			|| (m_type >= A78_TYPE0_POK450_440 && m_type <= A78_VERSA_POK450_440))
 		m_cart->ram_alloc(0x8000);
-	// bankset with SuperGame RAM: 16K at $4000 that both chips read
-	if (m_type == A78_BANKSET_SG_RAM || m_type == A78_BANKSET_SG_RAM_POK800)
+	// bankset with SuperGame RAM: 16K at $4000 that both chips read; RAM at $4000 without bankswitch
+	if (m_type == A78_BANKSET_SG_RAM || m_type == A78_BANKSET_SG_RAM_POK800 ||
+			(m_type >= A78_TYPE0_RAM && m_type <= A78_TYPE0_RAM_POK800))
 		m_cart->ram_alloc(0x4000);
 	// bankset bank RAM: 16K for the CPU at $4000 and 16K for MARIA
 	if (m_type == A78_BANKSET_SG_BANKRAM || m_type == A78_BANKSET_SG_BANKRAM_POK800 ||
@@ -728,11 +750,11 @@ std::string a78_cart_slot_device::media_details() const
 	std::string notes(m_origin ? m_origin : "");
 	auto const note = [&notes] (const char *text) { if (!notes.empty()) notes += ", "; notes += text; };
 	if (m_hsc_save && m_savekey)
-		note("saves to the High Score Cart or a SaveKey in port 2");
+		note("saves to the High Score Cart, or uses a SaveKey or AtariVox in port 2");
 	else if (m_hsc_save)
 		note("saves to the High Score Cart");
 	else if (m_savekey)
-		note("saves to a SaveKey in port 2");
+		note("uses a SaveKey or AtariVox in port 2");
 	if (m_expansion)
 		note("uses the XBoarD or XM");
 	if (!notes.empty())
@@ -833,8 +855,9 @@ std::string a78_cart_slot_device::get_default_card_software(get_default_card_sof
 				return a78_get_slot(A78_HSC);
 		}
 
-		// let's try to auto-fix some common errors in the header
-		int const mapper = validate_header(get_u16be(&head[53]), false);
+		// let's try to auto-fix some common errors in the header (but RAM at $4000 alone is a board)
+		int const flat_ram = a78_flat_ram_type(get_u16be(&head[53]), get_u32be(&head[49]));
+		int const mapper = validate_header(get_u16be(&head[53]) & ((flat_ram >= 0) ? ~0x04 : ~0), false);
 
 		int type = A78_TYPE0;
 		switch (mapper & 0x2e)
@@ -882,6 +905,8 @@ std::string a78_cart_slot_device::get_default_card_software(get_default_card_sof
 			type = A78_ABSOLUTE;
 		else if ((mapper & 0x0080) == 0x0080)
 			type = A78_TYPE8;
+		if (flat_ram >= 0)
+			type = flat_ram;
 
 		logerror("Cart type: %x\n", type);
 		char const *const slot_string = a78_get_slot(type);

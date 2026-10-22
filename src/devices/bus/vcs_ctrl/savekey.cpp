@@ -10,8 +10,8 @@
     making its RIOT pin an output at 0, and lets it go by making the pin
     an input again, when the EEPROM can pull SDA low to answer.
 
-    The AtariVox has the same memory, and a SpeakJet speech chip on pins 1
-    and 2 that is not emulated (its ready line, pin 2, reads high).
+    The AtariVox has the same memory, and a speech chip on pins 1 and 2:
+    see atarivox.cpp.
 
 **********************************************************************/
 
@@ -19,11 +19,16 @@
 #include "savekey.h"
 
 
-DEFINE_DEVICE_TYPE(VCS_SAVEKEY, vcs_savekey_device, "vcs_savekey", "SaveKey / AtariVox memory")
+DEFINE_DEVICE_TYPE(VCS_SAVEKEY, vcs_savekey_device, "vcs_savekey", "SaveKey")
 
 
 vcs_savekey_device::vcs_savekey_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock) :
-	device_t(mconfig, VCS_SAVEKEY, tag, owner, clock),
+	vcs_savekey_device(mconfig, VCS_SAVEKEY, tag, owner, clock)
+{
+}
+
+vcs_savekey_device::vcs_savekey_device(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, uint32_t clock) :
+	device_t(mconfig, type, tag, owner, clock),
 	device_vcs_control_port_interface(mconfig, *this),
 	m_eeprom(*this, "eeprom"),
 	m_scl(1),

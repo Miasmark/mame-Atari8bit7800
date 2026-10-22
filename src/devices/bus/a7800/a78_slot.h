@@ -61,7 +61,12 @@ enum
 	A78_BANKSET_52K,
 	A78_BANKSET_52K_POK4000,
 	A78_BANKSET_SG_RAM,         // SuperGame RAM at $4000 that both chips read (header $2006)
-	A78_BANKSET_SG_RAM_POK800
+	A78_BANKSET_SG_RAM_POK800,
+
+	// no bankswitch, with 16K of RAM at $4000 (header $0004 on an image under 64K)
+	A78_TYPE0_RAM = 0x200,
+	A78_TYPE0_RAM_POK450,
+	A78_TYPE0_RAM_POK800
 };
 
 
