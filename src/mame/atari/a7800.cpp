@@ -1733,6 +1733,7 @@ void a7800_state::machine_start()
 			break;
 		case A78_XB_BOARD:
 		case A78_TYPE0_POK450:
+		case A78_TYPE0_RAM_POK450:
 		case A78_TYPE1_POK450:
 		case A78_TYPE6_POK450:
 		case A78_TYPEA_POK450:
@@ -1757,6 +1758,7 @@ void a7800_state::machine_start()
 			m_maria->space(atari_maria_device::AS_DMA).install_read_handler(0x3000, 0x3fff, read8sm_delegate(*m_cart, FUNC(a78_cart_slot_device::read_30xx)));
 			break;
 		case A78_TYPE0_POK800:
+		case A78_TYPE0_RAM_POK800:
 		case A78_TYPE1_POK800:
 		case A78_TYPE2_POK800:
 		case A78_TYPE6_POK800:
