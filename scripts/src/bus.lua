@@ -6252,6 +6252,9 @@ if BUSES["VCS_CTRL"] then
 	files {
 		MAME_DIR .. "src/devices/bus/vcs_ctrl/ctrl.cpp",
 		MAME_DIR .. "src/devices/bus/vcs_ctrl/ctrl.h",
+		MAME_DIR .. "src/devices/bus/vcs_ctrl/atarivox.cpp",
+		MAME_DIR .. "src/devices/bus/vcs_ctrl/atarivox.h",
+		MAME_DIR .. "src/devices/bus/vcs_ctrl/atarivox.ipp",
 		MAME_DIR .. "src/devices/bus/vcs_ctrl/c1350.cpp",
 		MAME_DIR .. "src/devices/bus/vcs_ctrl/c1350.h",
 		MAME_DIR .. "src/devices/bus/vcs_ctrl/cdgames.cpp",

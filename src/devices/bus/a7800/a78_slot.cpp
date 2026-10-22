@@ -656,7 +656,7 @@ std::pair<std::error_condition, std::string> a78_cart_slot_device::call_load()
 			m_savekey = BIT(head[58], 1) || head[56] == 10;
 			if (m_savekey)
 			{
-				osd_printf_info("This cart saves to a SaveKey (or AtariVox) in controller port 2.\n");
+				osd_printf_info("This cart uses a SaveKey or AtariVox (its memory, its voice) in controller port 2.\n");
 				osd_printf_info("It is plugged in there unless Machine Configuration says otherwise.\n");
 			}
 
@@ -728,11 +728,11 @@ std::string a78_cart_slot_device::media_details() const
 	std::string notes(m_origin ? m_origin : "");
 	auto const note = [&notes] (const char *text) { if (!notes.empty()) notes += ", "; notes += text; };
 	if (m_hsc_save && m_savekey)
-		note("saves to the High Score Cart or a SaveKey in port 2");
+		note("saves to the High Score Cart, or uses a SaveKey or AtariVox in port 2");
 	else if (m_hsc_save)
 		note("saves to the High Score Cart");
 	else if (m_savekey)
-		note("saves to a SaveKey in port 2");
+		note("uses a SaveKey or AtariVox in port 2");
 	if (m_expansion)
 		note("uses the XBoarD or XM");
 	if (!notes.empty())
