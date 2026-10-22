@@ -33,6 +33,9 @@ DEFINE_DEVICE_TYPE(A78_ROM_POKEY,       a78_rom_pokey_device,       "a78_rom_pok
 DEFINE_DEVICE_TYPE(A78_ROM_SG_POKEY,    a78_rom_sg_pokey_device,    "a78_rom_sgp",  "Atari 7800 ROM Carts w/SuperGame Bankswitch + POKEY")
 DEFINE_DEVICE_TYPE(A78_ROM_SG_RAM,      a78_rom_sg_ram_device,      "a78_rom_sgr",  "Atari 7800 ROM Carts w/SuperGame Bankswitch + RAM")
 DEFINE_DEVICE_TYPE(A78_ROM_MRAM,        a78_rom_mram_device,        "a78_rom_mram", "Atari 7800 ROM Carts + Mirror RAM")
+DEFINE_DEVICE_TYPE(A78_ROM_RAM,         a78_rom_ram_device,         "a78_rom_ram",  "Atari 7800 ROM Carts w/no Bankswitch + RAM")
+DEFINE_DEVICE_TYPE(A78_ROM_P450_RAM,    a78_rom_p450_ram_device,    "a78_p450_ram", "Atari 7800 ROM Carts w/no Bankswitch + RAM + POKEY @ 0x0450")
+DEFINE_DEVICE_TYPE(A78_ROM_P800_RAM,    a78_rom_p800_ram_device,    "a78_p800_ram", "Atari 7800 ROM Carts w/no Bankswitch + RAM + POKEY @ 0x0800")
 DEFINE_DEVICE_TYPE(A78_ROM_SG9,         a78_rom_sg9_device,         "a78_rom_sg9",  "Atari 7800 ROM Carts w/SuperGame 9Banks")
 DEFINE_DEVICE_TYPE(A78_ROM_ABSOLUTE,    a78_rom_abs_device,         "a78_rom_abs",  "Atari 7800 ROM Carts w/Absolute Bankswitch")
 DEFINE_DEVICE_TYPE(A78_ROM_ACTIVISION,  a78_rom_act_device,         "a78_rom_act",  "Atari 7800 ROM Carts w/Activision Bankswitch")
@@ -81,6 +84,28 @@ a78_rom_mram_device::a78_rom_mram_device(const machine_config &mconfig, device_t
 
 a78_rom_mram_device::a78_rom_mram_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
 	: a78_rom_mram_device(mconfig, A78_ROM_MRAM, tag, owner, clock)
+{
+}
+
+a78_rom_ram_device::a78_rom_ram_device(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, uint32_t clock)
+	: a78_rom_device(mconfig, type, tag, owner, clock)
+{
+}
+
+a78_rom_ram_device::a78_rom_ram_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+	: a78_rom_ram_device(mconfig, A78_ROM_RAM, tag, owner, clock)
+{
+}
+
+a78_rom_p450_ram_device::a78_rom_p450_ram_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+	: a78_rom_ram_device(mconfig, A78_ROM_P450_RAM, tag, owner, clock)
+	, m_pokey450(*this, "pokey450")
+{
+}
+
+a78_rom_p800_ram_device::a78_rom_p800_ram_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+	: a78_rom_ram_device(mconfig, A78_ROM_P800_RAM, tag, owner, clock)
+	, m_pokey800(*this, "pokey800")
 {
 }
 
@@ -350,6 +375,34 @@ void a78_rom_mram_device::write_40xx(offs_t offset, uint8_t data)
 
 /*-------------------------------------------------
 
+ Carts with no bankswitch + 16K RAM at 0x4000-0x7fff
+ (header 0x0004 without the SuperGame bit, on an
+ image under 64K): writes to the ROM change nothing.
+
+ GAMES: Star Raiders (Mike Saarna's port, with a
+ POKEY at 0x0450)
+
+ -------------------------------------------------*/
+
+uint8_t a78_rom_ram_device::read_40xx(offs_t offset)
+{
+	if (offset < 0x4000)
+		return m_ram[offset];
+	if (offset + 0x4000 < m_base_rom)
+		return 0xff;
+	else
+		return m_rom[offset + 0x4000 - m_base_rom];
+}
+
+void a78_rom_ram_device::write_40xx(offs_t offset, uint8_t data)
+{
+	if (offset < 0x4000)
+		m_ram[offset] = data;
+}
+
+
+/*-------------------------------------------------
+
  Carts with SuperGame bankswitch:
  8 x 16K banks mappable in 0x8000-0xbfff
  bank 7 is always mapped in 0xc000-0xffff
@@ -557,6 +610,13 @@ void a78_rom_p450_device::device_add_mconfig(machine_config &config)
 	POKEY(config, m_pokey450, DERIVED_CLOCK(1, 1)).add_route(ALL_OUTPUTS, "pokey_450", 1.00);
 }
 
+void a78_rom_p450_ram_device::device_add_mconfig(machine_config &config)
+{
+	SPEAKER(config, "pokey_450").front_center();
+
+	POKEY(config, m_pokey450, DERIVED_CLOCK(1, 1)).add_route(ALL_OUTPUTS, "pokey_450", 1.00);
+}
+
 void a78_rom_p450_pokey_device::device_add_mconfig(machine_config &config)
 {
 	SPEAKER(config, "addon").front_center();
@@ -584,6 +644,13 @@ void a78_rom_p450_sg9_device::device_add_mconfig(machine_config &config)
 // Machine configs for PCB variants with a POKEY at $0800
 
 void a78_rom_p800_device::device_add_mconfig(machine_config &config)
+{
+	SPEAKER(config, "pokey_800").front_center();
+
+	POKEY(config, m_pokey800, DERIVED_CLOCK(1, 1)).add_route(ALL_OUTPUTS, "pokey_800", 1.00);
+}
+
+void a78_rom_p800_ram_device::device_add_mconfig(machine_config &config)
 {
 	SPEAKER(config, "pokey_800").front_center();
 
