@@ -1,5 +1,5 @@
 // license:BSD-3-Clause
-// copyright-holders:a7800 toolkit contributors
+// copyright-holders:Nathan Woods, Wilbert Pol, David Shah, Miasmark
 #ifndef MAME_BUS_VCS_VCS_CARTS_H
 #define MAME_BUS_VCS_VCS_CARTS_H
 

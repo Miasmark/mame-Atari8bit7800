@@ -71,7 +71,7 @@ a78_rom_p450_vb_device::a78_rom_p450_vb_device(const machine_config &mconfig, de
 }
 
 a78_rom_p440_p450_vb_device::a78_rom_p440_p450_vb_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
-	: a78_pokey440_device<a78_rom_p450_vb_device>(mconfig, A78_ROM_P440_P450_VB, tag, owner, clock, "addon")
+	: a78_pokey440_base<a78_rom_p450_vb_device>(mconfig, A78_ROM_P440_P450_VB, tag, owner, clock, "addon")
 {
 }
 

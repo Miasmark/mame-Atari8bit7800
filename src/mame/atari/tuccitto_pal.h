@@ -18,7 +18,7 @@
 namespace atari_tuccitto {
 
 // the "Palette" machine configuration setting
-enum : u8
+enum palette_choice : u8
 {
 	WARM = 0,               // 26.7 degrees: the default
 	COOL,                   // 25.7 degrees
@@ -26,13 +26,15 @@ enum : u8
 	ORIGINAL                // the palette each driver had before (MAME 0.289)
 };
 
+constexpr unsigned TEMPERATURES = 3;    // WARM, COOL and HOT: the measured palettes
+
 // [temperature][colour byte]
-extern const rgb_t ntsc[3][256];
-extern const rgb_t pal[3][256];
+extern const rgb_t NTSC[TEMPERATURES][256];
+extern const rgb_t PAL[TEMPERATURES][256];
 
 // The 7800 PAL palette's hue for each 2600 PAL hue: the two machines number
 // their PAL hues differently (and 2600 hues 0, 1, E and F are grey).
-extern const u8 pal_2600_hue[16];
+extern const u8 PAL_2600_HUE[16];
 
 } // namespace atari_tuccitto
 

@@ -362,7 +362,7 @@ static const a78_slot slot_list[] =
 // RAM at $4000 without the SuperGame bit, on an image under 64K: no bankswitch, the RAM over the
 // ROM's $4000-$7fff (as the openfpga-7800 core has it; validate_header would make it SuperGame), with
 // or without a POKEY at $0450 or $0800. -1 for any other header.
-static int a78_flat_ram_type(int mapper, uint64_t len)
+static int a78_flat_ram_type(int mapper, uint32_t len)
 {
 	if (len >= 0x10000)
 		return -1;
@@ -376,7 +376,7 @@ static int a78_flat_ram_type(int mapper, uint64_t len)
 
 // Bankset carts (header bit $2000) and carts with a POKEY at $0800 (header bit $8000), which
 // the plain header switch does not know. -1 if this header is neither.
-static int a78_special_type(int mapper, uint64_t len)
+static int a78_special_type(int mapper, uint32_t len)
 {
 	switch (mapper & 0xe02e)
 	{
@@ -412,6 +412,66 @@ static int a78_get_pcb_id(const char *slot)
 	return 0;
 }
 
+// the board an .a78 header's cart type asks for, on an image of len bytes
+int a78_cart_slot_device::header_type(uint16_t head, uint32_t len, bool log) const
+{
+	// let's try to auto-fix some common errors in the header (but RAM at $4000 alone is a board)
+	int const flat_ram = a78_flat_ram_type(head, len);
+	int const mapper = validate_header(head & ((flat_ram >= 0) ? ~0x04 : ~0), log);
+
+	int type = A78_TYPE0;
+	switch (mapper & 0x2e)
+	{
+		case 0x0000:
+			type = BIT(mapper, 0) ? A78_TYPE1 : A78_TYPE0;
+			break;
+		case 0x0002:
+			type = BIT(mapper, 0) ? A78_TYPE3 : A78_TYPE2;
+			break;
+		case 0x0006:
+			type = A78_TYPE6;
+			break;
+		case 0x000a:
+			type = A78_TYPEA;
+			break;
+		case 0x0022:
+		case 0x0026:
+			if (len > 0x40000)
+				type = A78_MEGACART;
+			else
+				type = A78_VERSABOARD;
+			break;
+	}
+
+	// check if cart has a POKEY at $0450 (typically a VersaBoard variant)
+	if (mapper & 0x40)
+	{
+		if (type != A78_TYPE2)
+		{
+			type &= ~0x02;
+			type += A78_POKEY0450;
+		}
+	}
+	if (a78_dual_pokey(mapper, type))
+		type += A78_POKEY0440;
+
+	if (int const special = a78_special_type(mapper, len); special >= 0)
+		type = special;
+
+	// check special bits, which override the previous
+	if ((mapper & 0xff00) == 0x0100)
+		type = A78_ACTIVISION;
+	else if ((mapper & 0xff00) == 0x0200)
+		type = A78_ABSOLUTE;
+	// (for now) mirror ram implies no bankswitch format is used
+	else if ((mapper & 0x0080) == 0x0080)
+		type = A78_TYPE8;
+	if (flat_ram >= 0)
+		type = flat_ram;
+
+	return type;
+}
+
 // Activision images come in two orders. The software list's (and the "(OM)" .a78 files') are the
 // EPROM's, which a78_rom_act_device reads; the usual .a78 order ("(AM)", the a7800 fork's) has each
 // pair of 8K blocks exchanged, so read MAME's way its vectors land in a block of $00 or $FF and the
@@ -428,7 +488,7 @@ static void activision_eprom_order(uint8_t *rom, uint32_t len)
 	{
 		for (uint32_t b = 0; b < len; b += 0x4000)
 			std::swap_ranges(&rom[b], &rom[b + 0x2000], &rom[b + 0x2000]);
-		osd_printf_info("Activision image in the usual .a78 block order (reset $%04X): read in EPROM order\n", usual);
+		osd_printf_verbose("Activision image in the usual .a78 block order (reset $%04X): read in EPROM order\n", usual);
 	}
 }
 
@@ -569,7 +629,6 @@ std::pair<std::error_condition, std::string> a78_cart_slot_device::call_load()
 		else
 		{
 			// Load and check the header
-			int mapper;
 			uint8_t head[128] = { };
 			fread(head, 128);
 
@@ -610,58 +669,7 @@ std::pair<std::error_condition, std::string> a78_cart_slot_device::call_load()
 				len = length() - 128;
 			}
 
-			// let's try to auto-fix some common errors in the header (but RAM at $4000 alone is a board)
-			int const flat_ram = a78_flat_ram_type(get_u16be(&head[53]), len);
-			mapper = validate_header(get_u16be(&head[53]) & ((flat_ram >= 0) ? ~0x04 : ~0), true);
-
-			switch (mapper & 0x2e)
-			{
-				case 0x0000:
-					m_type = BIT(mapper, 0) ? A78_TYPE1 : A78_TYPE0;
-					break;
-				case 0x0002:
-					m_type = BIT(mapper, 0) ? A78_TYPE3 : A78_TYPE2;
-					break;
-				case 0x0006:
-					m_type = A78_TYPE6;
-					break;
-				case 0x000a:
-					m_type = A78_TYPEA;
-					break;
-				case 0x0022:
-				case 0x0026:
-					if (len > 0x40000)
-						m_type = A78_MEGACART;
-					else
-						m_type = A78_VERSABOARD;
-					break;
-			}
-
-			// check if cart has a POKEY at $0450 (typically a VersaBoard variant)
-			if (mapper & 0x40)
-			{
-				if (m_type != A78_TYPE2)
-				{
-					m_type &= ~0x02;
-					m_type += A78_POKEY0450;
-				}
-			}
-			if (a78_dual_pokey(mapper, m_type))
-				m_type += A78_POKEY0440;
-
-			if (int const special = a78_special_type(mapper, len); special >= 0)
-				m_type = special;
-
-			// check special bits, which override the previous
-			if ((mapper & 0xff00) == 0x0100)
-				m_type = A78_ACTIVISION;
-			else if ((mapper & 0xff00) == 0x0200)
-				m_type = A78_ABSOLUTE;
-			// (for now) mirror ram implies no bankswitch format is used
-			else if ((mapper & 0x0080) == 0x0080)
-				m_type = A78_TYPE8;
-			if (flat_ram >= 0)
-				m_type = flat_ram;
+			m_type = header_type(get_u16be(&head[53]), len, true);
 
 
 			logerror("Cart type: 0x%x\n", m_type);
@@ -855,58 +863,7 @@ std::string a78_cart_slot_device::get_default_card_software(get_default_card_sof
 				return a78_get_slot(A78_HSC);
 		}
 
-		// let's try to auto-fix some common errors in the header (but RAM at $4000 alone is a board)
-		int const flat_ram = a78_flat_ram_type(get_u16be(&head[53]), get_u32be(&head[49]));
-		int const mapper = validate_header(get_u16be(&head[53]) & ((flat_ram >= 0) ? ~0x04 : ~0), false);
-
-		int type = A78_TYPE0;
-		switch (mapper & 0x2e)
-		{
-			case 0x0000:
-				type = BIT(mapper, 0) ? A78_TYPE1 : A78_TYPE0;
-				break;
-			case 0x0002:
-				type = BIT(mapper, 0) ? A78_TYPE3 : A78_TYPE2;
-				break;
-			case 0x0006:
-				type = A78_TYPE6;
-				break;
-			case 0x000a:
-				type = A78_TYPEA;
-				break;
-			case 0x0022:
-			case 0x0026:
-				if (len > 0x40000)
-					type = A78_MEGACART;
-				else
-					type = A78_VERSABOARD;
-				break;
-		}
-
-		// check if cart has a POKEY at $0450 (typically a VersaBoard variant)!
-		if (mapper & 0x40)
-		{
-			if (type != A78_TYPE2)
-			{
-				type &= ~0x02;
-				type += A78_POKEY0450;
-			}
-		}
-		if (a78_dual_pokey(mapper, type))
-			type += A78_POKEY0440;
-
-		if (int const special = a78_special_type(mapper, len); special >= 0)
-			type = special;
-
-		// check special bits, which override the previous
-		if ((mapper & 0xff00) == 0x0100)
-			type = A78_ACTIVISION;
-		else if ((mapper & 0xff00) == 0x0200)
-			type = A78_ABSOLUTE;
-		else if ((mapper & 0x0080) == 0x0080)
-			type = A78_TYPE8;
-		if (flat_ram >= 0)
-			type = flat_ram;
+		int const type = header_type(get_u16be(&head[53]), get_u32be(&head[49]), false);
 
 		logerror("Cart type: %x\n", type);
 		char const *const slot_string = a78_get_slot(type);

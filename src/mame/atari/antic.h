@@ -133,12 +133,10 @@ private:
 	inline void mode_gtia2(address_space &space, VIDEO *video, int bytes, int erase);
 	inline void mode_gtia3(address_space &space, VIDEO *video, int bytes, int erase);
 
-	emu_timer *m_cycle_steal_timer;
 	emu_timer *m_issue_dli_timer;
 	emu_timer *m_scanline_timer;
 	emu_timer *m_line_done_timer;
 	uint32_t  m_cmd;                /* currently executed display list command */
-	uint32_t  m_steal_cycles;       /* steal how many cpu cycles for this line ? */
 	uint32_t  m_vscrol_old;         /* old vscrol value */
 	uint32_t  m_hscrol_old;         /* old hscrol value */
 	int32_t   m_modelines;          /* number of lines for current ANTIC mode */
@@ -183,7 +181,6 @@ private:
 
 	TIMER_CALLBACK_MEMBER( issue_dli );
 	TIMER_CALLBACK_MEMBER( line_done );
-	TIMER_CALLBACK_MEMBER( steal_cycles );
 	TIMER_CALLBACK_MEMBER( scanline_render );
 	TIMER_CALLBACK_MEMBER( dma_cycles );
 
@@ -192,10 +189,10 @@ private:
 	// timings" measurements it draws on. The CPU is held for each run of busy cycles.
 	enum { DMA_FREE = 0, DMA_PM, DMA_DL, DMA_PF, DMA_CHR, DMA_REFRESH };
 	void build_dma_map();
-	void schedule_dma_run(int from);
+	void schedule_dma_run();
 	uint8_t   m_dma_busy[114];      /* owner of each cycle of the current line */
-	int       m_dma_run;            /* index of the next busy run to halt the CPU for */
-	int       m_dma_runs;
+	uint8_t   m_dma_run;            /* index of the next busy run to halt the CPU for */
+	uint8_t   m_dma_runs;
 	uint8_t   m_dma_run_start[114];
 	uint8_t   m_dma_run_len[114];
 	attotime  m_line_start;         /* when the current line's cycle 0 was */

@@ -174,6 +174,7 @@ private:
 
 	std::pair<std::error_condition, std::string> verify_header(const uint8_t *header);
 	int validate_header(int head, bool log) const;
+	int header_type(uint16_t head, uint32_t len, bool log) const;
 	void internal_header_logging(const uint8_t *header, uint32_t len);
 	int softlist_type(const uint8_t *data, uint32_t len) const;
 	int headerless_type(const uint8_t *data, uint32_t len) const;

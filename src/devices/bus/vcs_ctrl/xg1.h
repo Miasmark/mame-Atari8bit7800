@@ -1,5 +1,5 @@
 // license:BSD-3-Clause
-// copyright-holders:a7800 toolkit contributors
+// copyright-holders:Miasmark
 /**********************************************************************
 
     Atari XG-1 light gun

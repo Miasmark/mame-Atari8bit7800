@@ -8,7 +8,6 @@
 
 #include "emu.h"
 #include "tia.h"
-
 #include "tuccitto_pal.h"
 
 #include "screen.h"
@@ -49,10 +48,10 @@ void tia_video_device::extend_palette()
 	}
 }
 
-// the palette the Palette setting picks, when it is not the original one
+// the palette the Palette setting picks (atari_tuccitto::WARM, COOL, HOT or ORIGINAL)
 u8 tia_video_device::palette_choice() const
 {
-	return (m_config->read() >> 1) & 3;
+	return BIT(m_config->read(), 1, 2);
 }
 
 void tia_video_device::update_palette()
@@ -71,7 +70,7 @@ void tia_ntsc_video_device::init_palette()
 	if (m_palette_choice != atari_tuccitto::ORIGINAL)
 	{
 		for (int i = 0; i < 128; i++)
-			set_pen_color(i, atari_tuccitto::ntsc[m_palette_choice][i << 1]);
+			set_pen_color(i, atari_tuccitto::NTSC[m_palette_choice][i << 1]);
 		extend_palette();
 		return;
 	}
@@ -326,7 +325,7 @@ void tia_pal_video_device::init_palette()
 	if (m_palette_choice != atari_tuccitto::ORIGINAL)
 	{
 		for (int i = 0; i < 128; i++)
-			set_pen_color(i, atari_tuccitto::pal[m_palette_choice][(atari_tuccitto::pal_2600_hue[i >> 3] << 4) | ((i & 7) << 1)]);
+			set_pen_color(i, atari_tuccitto::PAL[m_palette_choice][(atari_tuccitto::PAL_2600_HUE[i >> 3] << 4) | ((i & 7) << 1)]);
 		extend_palette();
 		return;
 	}
@@ -412,7 +411,7 @@ static INPUT_PORTS_START( tia_video )
 	PORT_CONFSETTING(    0x00, "Warm (26.7 degrees)" )
 	PORT_CONFSETTING(    0x02, "Cool (25.7 degrees)" )
 	PORT_CONFSETTING(    0x04, "Hot (27.7 degrees)" )
-	PORT_CONFSETTING(    0x06, "MAME 0.289" )
+	PORT_CONFSETTING(    0x06, "Original" )   // MAME's palettes before the measured ones
 INPUT_PORTS_END
 
 ioport_constructor tia_video_device::device_input_ports() const

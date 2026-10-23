@@ -242,7 +242,7 @@ void a26_rom_ss_device::setup_tape_loader()
 
 	// f800: the BIOS entry multiload games jump to, with the wanted load number at 00fa
 	// f806: reset entry, loads the first load of the image
-	static const uint8_t loader[] =
+	static constexpr uint8_t LOADER[] =
 	{
 		0xad, 0xf0, 0xff,           // f800: LDA $FFF0      copy the load asked for at $FA into RAM
 		0x4c, 0x09, 0xf8,           //       JMP $F809
@@ -269,7 +269,7 @@ void a26_rom_ss_device::setup_tape_loader()
 		0xcd, 0x00, 0xf0,           //       CMP $F0xx      latch the control byte (patched)
 		0x4c, 0xfa, 0x00            //       JMP $00FA
 	};
-	std::copy(std::begin(loader), std::end(loader), std::begin(m_loader));
+	std::copy(std::begin(LOADER), std::end(LOADER), std::begin(m_loader));
 
 	// reset and break vectors
 	m_loader[0x7fc] = m_loader[0x7fe] = 0x06;

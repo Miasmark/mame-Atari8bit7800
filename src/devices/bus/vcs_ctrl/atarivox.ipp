@@ -2,12 +2,13 @@
 // copyright-holders:Miasmark
 // The AtariVox voice engine's program and data ROMs, from openfpga-7800's
 // src/fpga/core/atarivox/vox_irom.hex and vox_drom.hex (made by its
-// tools/atarivox/sjhw.py --build). Regenerate both together.
+// tools/atarivox/sjhw.py --build). Regenerate both together. openfpga-7800's own code is
+// MIT-licensed, by the same copyright holder, who releases these tables here under BSD-3-Clause.
 
 namespace {
 
 // 40-bit instructions; the rest of the 1,024 words are 0
-u64 const avox_irom[638] = {
+constexpr u64 AVOX_IROM[638] = {
 	0x2e40001000, 0x2e60000800, 0x3e20008000, 0x4600000001,
 	0x2d200000e3, 0xbd60000000, 0x359580000c, 0x801600000b,
 	0x75a0000068, 0x1db6d80000, 0x78005a0068, 0x3595800001,
@@ -171,7 +172,7 @@ u64 const avox_irom[638] = {
 };
 
 // 20-bit words; the rest of the 4,096 words are 0
-u32 const avox_drom[3862] = {
+constexpr u32 AVOX_DROM[3862] = {
 	0x00000, 0x00019, 0x00032, 0x0004b, 0x00064, 0x0007e, 0x00097, 0x000b0,
 	0x000c9, 0x000e2, 0x000fb, 0x00114, 0x0012d, 0x00146, 0x0015f, 0x00178,
 	0x00191, 0x001aa, 0x001c3, 0x001dc, 0x001f5, 0x0020e, 0x00227, 0x00240,

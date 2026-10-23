@@ -1,5 +1,5 @@
 // license:BSD-3-Clause
-// copyright-holders:a7800 toolkit contributors
+// copyright-holders:Miasmark
 /**********************************************************************
 
     SaveKey (and the memory of the AtariVox)
@@ -40,8 +40,8 @@ protected:
 private:
 	required_device<i2cmem_device> m_eeprom;
 
-	int m_scl;
-	int m_sda;
+	u8 m_scl;
+	u8 m_sda;
 };
 
 

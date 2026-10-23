@@ -24,7 +24,8 @@
     its phrases with "\V0 " to be sure it is out of the mode, then speaks.)
 
     The engine starts with the first start bit it sees, as if the AtariVox
-    were switched on then, so games that never speak cost nothing.
+    were switched on then, so games that never speak cost nothing. The
+    console's reset doesn't reach the AtariVox, so the device has no reset.
 
 **********************************************************************/
 
@@ -68,7 +69,7 @@ bool wraps(u64 c0, u64 c1)
 
 u32 drom(unsigned addr)
 {
-	return (addr < std::size(avox_drom)) ? avox_drom[addr] : 0;
+	return (addr < std::size(AVOX_DROM)) ? AVOX_DROM[addr] : 0;
 }
 
 } // anonymous namespace
@@ -147,7 +148,7 @@ void atarivox_voice_device::line_w(int state)
 int atarivox_voice_device::ready_r()
 {
 	m_stream->update();
-	return (m_fifo_count < 32) ? 1 : 0;
+	return (m_fifo_count < std::size(m_fifo) / 2) ? 1 : 0;
 }
 
 TIMER_CALLBACK_MEMBER(atarivox_voice_device::rx_sample)
@@ -182,7 +183,9 @@ void atarivox_voice_device::received(u8 data)
 		m_scp = data == '0';
 	}
 	else if (data == '\\')
+	{
 		m_escape = true;
+	}
 	else if (m_scp)
 	{
 		switch (data)
@@ -201,7 +204,7 @@ void atarivox_voice_device::received(u8 data)
 	}
 	else if (m_fifo_count < std::size(m_fifo))
 	{
-		m_fifo[(m_fifo_rp + m_fifo_count) & 63] = data;
+		m_fifo[(m_fifo_rp + m_fifo_count) % std::size(m_fifo)] = data;
 		m_fifo_count++;
 	}
 }
@@ -210,12 +213,12 @@ void atarivox_voice_device::received(u8 data)
 // one instruction of the engine, as voxeng.py's Engine.step and avox_engine.sv
 void atarivox_voice_device::step()
 {
-	u64 const w = (m_pc < std::size(avox_irom)) ? avox_irom[m_pc] : 0;
-	unsigned const op = w >> 35;
+	u64 const w = (m_pc < std::size(AVOX_IROM)) ? AVOX_IROM[m_pc] : 0;
+	unsigned const op = BIT(w, 35, 5);
 	unsigned const d = BIT(w, 29, 6);
 	u32 const a = m_mem[BIT(w, 23, 6)];
 	u32 const b = m_mem[BIT(w, 17, 6)];
-	u16 const imm = w & 0xffff;
+	u16 const imm = BIT(w, 0, 16);
 	u32 const a_imm = a + u32(s32(s16(imm)));
 	u64 const last = m_clk + CLK_PER_INSTR - 1;
 
@@ -239,9 +242,9 @@ void atarivox_voice_device::step()
 	case OP_LUI:  res = u32(imm) << 16; break;
 	case OP_MUL:
 		{
-			static constexpr unsigned shifts[4] = { 0, 7, 12, 16 };
+			static constexpr unsigned SHIFTS[4] = { 0, 7, 12, 16 };
 			s64 const p = s64(util::sext(a, 27)) * util::sext(b, 27);
-			res = u32(p >> shifts[imm & 3]);
+			res = u32(p >> SHIFTS[imm & 3]);
 		}
 		break;
 	case OP_HI12: res = a >> 20; break;
@@ -293,7 +296,7 @@ void atarivox_voice_device::step()
 			if (m_fifo_count)
 			{
 				res = m_fifo[m_fifo_rp];
-				m_fifo_rp = (m_fifo_rp + 1) & 63;
+				m_fifo_rp = (m_fifo_rp + 1) % std::size(m_fifo);
 				m_fifo_count--;
 			}
 			break;
@@ -336,7 +339,9 @@ void atarivox_voice_device::sound_stream_update(sound_stream &stream)
 				step();
 		}
 		else
+		{
 			m_clk = end;
+		}
 
 		// a TIA channel at full volume reaches 15,360 here and 21,844 in the core, where the voice is
 		// mixed at x8 ("Normal"): the same balance
@@ -361,7 +366,7 @@ void vcs_atarivox_device::device_add_mconfig(machine_config &config)
 
 	// the AtariVox has its own audio jack
 	SPEAKER(config, "speaker").front_center();
-	ATARIVOX_VOICE(config, m_voice).add_route(ALL_OUTPUTS, "speaker", 1.0);
+	ATARIVOX_VOICE(config, m_voice, atarivox_voice_device::CLOCK).add_route(ALL_OUTPUTS, "speaker", 1.0);
 }
 
 void vcs_atarivox_device::vcs_joy_w(uint8_t data)

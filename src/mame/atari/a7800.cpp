@@ -208,12 +208,12 @@ protected:
 	bool m_maria_flag = false;
 	bool m_p1_one_button = true;
 	bool m_p2_one_button = true;
-	int m_savekey_scl = 1;          // the SaveKey lines as the RIOT drives them (1: let go)
-	int m_savekey_sda = 1;
+	u8 m_savekey_scl = 1;           // the SaveKey lines as the RIOT drives them (1: let go)
+	u8 m_savekey_sda = 1;
 
 	emu_timer *m_dma_start_timer = nullptr;
 	emu_timer *m_visible_timer = nullptr;
-	int m_pixelx = 0;
+	u8 m_pixelx = 0;
 	bool m_cart_ram_exec_warned = false;
 	uint8_t m_palette_choice = 0xff;  // the palette the pens hold (the TIA's Palette setting)
 	uint8_t m_skip_bios = 0;        // the -bios number of "skip" on this machine
@@ -332,16 +332,15 @@ void a7800_state::riot_button_pullup_w(uint8_t data)
 
 // Bankset cartridges with bank RAM: "execution from Sally's cart-ram isn't supported"
 // (7800.8bitdev.org, Bankset Bankswitching). An opcode fetch (the CPU's SYNC line) from the window
-// reads $FF here, and says so once. (MARIA's DMA reads of its own
-// RAM come through here too, with the CPU halted mid-fetch: those are told apart by MARIA's flag.)
+// reads $FF here, and says so once. (MARIA reads through its own address space, not this handler.)
 uint8_t a7800_state::bankram_window_r(offs_t offset)
 {
 	const offs_t addr = 0x4000 + offset;
-	if (!machine().side_effects_disabled() && m_maincpu->get_sync() && !m_maria->in_dma_read())
+	if (!machine().side_effects_disabled() && m_maincpu->get_sync())
 	{
 		if (!m_cart_ram_exec_warned)
 		{
-			osd_printf_warning("the CPU fetched an instruction from bankset cart RAM ($%04X): unsupported on hardware\n", addr);
+			logerror("the CPU fetched an instruction from bankset cart RAM ($%04X): unsupported on hardware\n", addr);
 			m_cart_ram_exec_warned = true;
 		}
 		return 0xff;
@@ -1664,7 +1663,7 @@ void a7800_state::update_palette()
 	if (choice == atari_tuccitto::ORIGINAL)
 		m_palette->set_pen_colors(0, m_ispal ? a7800p_colors : a7800_colors, 256);
 	else
-		m_palette->set_pen_colors(0, m_ispal ? atari_tuccitto::pal[choice] : atari_tuccitto::ntsc[choice], 256);
+		m_palette->set_pen_colors(0, m_ispal ? atari_tuccitto::PAL[choice] : atari_tuccitto::NTSC[choice], 256);
 }
 
 /* Initialise the palette */
@@ -1694,13 +1693,14 @@ void a7800_state::machine_start()
 	save_item(NAME(m_ctrl_reg));
 	save_item(NAME(m_maria_flag));
 	save_item(NAME(m_vcs_mode));
+	save_item(NAME(m_pixelx));
 
 	// a BIOS asked for by name whose file is missing leaves its area empty, with no reset
 	// vector: start as with -bios skip
 	uint8_t const *const bios = memregion("maincpu")->base();
 	m_no_bios = (system_bios() == m_skip_bios) || (bios[0x3ffc] == 0xff && bios[0x3ffd] == 0xff);
 	if (m_no_bios && system_bios() != m_skip_bios)
-		osd_printf_info("The BIOS's file was not found: the cartridge starts without it, as with -bios skip\n");
+		osd_printf_verbose("The BIOS's file was not found: the cartridge starts without it, as with -bios skip\n");
 
 	m_7800_width = m_screen->width();
 	m_7800_height = m_screen->height();
@@ -1795,7 +1795,6 @@ void a7800_state::machine_start()
 
 	m_dma_start_timer = timer_alloc(FUNC(a7800_state::maria_startdma), this);
 	m_visible_timer = timer_alloc(FUNC(a7800_state::maria_startvisible), this);
-	save_item(NAME(m_pixelx));
 }
 
 void a7800_state::machine_reset()
@@ -1908,7 +1907,7 @@ void a7800_state::a7800_common(machine_config &config, uint32_t clock)
 
 	A78_CART_SLOT(config, m_cart, clock/8, a7800_cart, nullptr);
 	I2C_24C256(config, m_savekey);  // a SaveKey in port 2
-	ATARIVOX_VOICE(config, m_voice).add_route(ALL_OUTPUTS, "mono", 1.00);    // and an AtariVox's voice
+	ATARIVOX_VOICE(config, m_voice, atarivox_voice_device::CLOCK).add_route(ALL_OUTPUTS, "mono", 1.00);    // and an AtariVox's voice
 	m_cart->set_vcs_image("cartridge2600");
 
 	// 2600 mode: the 2600's bus, its cartridge slot (-cart2600) and the TIA's video
