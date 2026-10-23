@@ -1,5 +1,5 @@
 // license:BSD-3-Clause
-// copyright-holders:David Haywood, a7800 toolkit contributors
+// copyright-holders:David Haywood, Miasmark
 /***************************************************************************
 
 Harmony / Melody cart for the A2600

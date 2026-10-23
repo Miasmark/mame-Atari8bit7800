@@ -1,5 +1,5 @@
 // license:BSD-3-Clause
-// copyright-holders:David Haywood, a7800 toolkit contributors
+// copyright-holders:David Haywood, Miasmark
 #ifndef MAME_BUS_VCS_HARMONY_MELODY_H
 #define MAME_BUS_VCS_HARMONY_MELODY_H
 
@@ -149,5 +149,6 @@ private:
 
 // device type definition
 DECLARE_DEVICE_TYPE(A26_ROM_HARMONY, a26_rom_harmony_device)
+DECLARE_DEVICE_TYPE(A26_HARMONY_ARM, a26_harmony_arm_device)
 
 #endif // MAME_BUS_VCS_HARMONY_MELODY_H

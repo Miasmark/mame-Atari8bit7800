@@ -29,6 +29,19 @@ DEFINE_DEVICE_TYPE(MOS6530, mos6530_device, "mos6530", "MOS 6530 MIOT")
 DEFINE_DEVICE_TYPE(MOS6532, mos6532_device, "mos6532", "MOS 6532 RIOT")
 
 
+namespace {
+
+// The CPU reads and writes on whole cycles of the clock the RIOT runs at, but a time held
+// in attoseconds can fall a hair short of the cycle, and as_ticks() would then round it
+// down to the one before: the count would run a cycle or two early.
+int64_t nearest_tick(const attotime &time, uint32_t clock)
+{
+	return (time + attotime::from_ticks(1, 2 * clock)).as_ticks(clock);
+}
+
+} // anonymous namespace
+
+
 void mos6530_device::rom_map(address_map &map)
 {
 	map.global_mask(0x3ff);
@@ -191,15 +204,6 @@ void mos6530_device_base::device_reset()
 }
 
 
-// The CPU reads and writes on whole cycles of the clock the RIOT runs at, but a time held
-// in attoseconds can fall a hair short of the cycle, and as_ticks() would then round it
-// down to the one before: the count would run a cycle or two early.
-static int64_t nearest_tick(const attotime &time, uint32_t clock)
-{
-	return (time + attotime::from_ticks(1, 2 * clock)).as_ticks(clock);
-}
-
-
 //-------------------------------------------------
 //  device_clock_changed - keep the count: the ticks
 //  left at the old rate are left at the new one (the
@@ -210,7 +214,7 @@ void mos6530_device_base::device_clock_changed()
 {
 	if (m_timer && m_timer->enabled() && m_timer_clock && clock())
 	{
-		uint64_t const ticks = nearest_tick(m_timer->remaining(), m_timer_clock);
+		int64_t const ticks = nearest_tick(m_timer->remaining(), m_timer_clock);
 		m_timer->adjust(attotime::from_ticks(ticks, clock()));
 	}
 	m_timer_clock = clock();
@@ -350,7 +354,9 @@ void mos6530_device_base::timer_start(uint8_t data, bool restart)
 	// the timer back to counting leaves it running, and the count steps on its next tick
 	int64_t first = now + 1;
 	if (restart)
+	{
 		m_prescale = attotime::from_ticks(first, clock());
+	}
 	else
 	{
 		int64_t const period = int64_t(1) << m_timershift;

@@ -1,5 +1,5 @@
 // license:BSD-3-Clause
-// copyright-holders:a7800 toolkit contributors
+// copyright-holders:Miasmark
 /*******************************************************************************
 
     script.cpp - a debugger with no window, driven by Lua
@@ -8,11 +8,9 @@
     use breakpoints, watchpoints or stepping: the stop is over before it can look.
     This one holds the stop and keeps Lua's periodic callbacks running while it
     does, so an autoboot script or plugin can read the stopped machine and decide
-    when to go on (manager.machine.debugger.execution_state = "run").
+    when to go on (manager.machine.debugger.execution_state = "run"):
 
-    Used by the a7800 toolkit's MCP server (probes/mcp-server.lua):
-
-        mame a7800 -debug -debugger script -autoboot_script mcp-server.lua ...
+        mame <system> -debug -debugger script -autoboot_script script.lua
 
 *******************************************************************************/
 
@@ -21,7 +19,6 @@
 
 #include "modules/osdmodule.h"
 
-#include "emuopts.h"
 #include "main.h"
 
 #include "osdcore.h"
@@ -34,18 +31,15 @@ namespace {
 class debug_script : public osd_module, public debug_module
 {
 public:
-	debug_script() : osd_module(OSD_DEBUG_PROVIDER, "script"), debug_module(), m_machine(nullptr) { }
+	debug_script() : osd_module(OSD_DEBUG_PROVIDER, "script"), debug_module() { }
 	virtual ~debug_script() { }
 
 	virtual int init(osd_interface &osd, const osd_options &options) override { return 0; }
 	virtual void exit() override { }
 
-	virtual void init_debugger(running_machine &machine) override { m_machine = &machine; }
+	virtual void init_debugger(running_machine &machine) override { }
 	virtual void wait_for_debugger(device_t &device, bool firststop) override;
 	virtual void debugger_update() override { }
-
-private:
-	running_machine *m_machine;
 };
 
 void debug_script::wait_for_debugger(device_t &device, bool firststop)
