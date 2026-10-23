@@ -411,7 +411,7 @@ uint8_t atari_maria_device::read_dl(offs_t addr)
 	{
 		if (!m_dl_warned)
 		{
-			osd_printf_warning("MARIA fetched a display list from bankset cartridge space ($%04X): unsupported, "
+			logerror("MARIA fetched a display list from bankset cartridge space ($%04X): unsupported, "
 					"display lists must be in console RAM\n", addr);
 			m_dl_warned = true;
 		}
