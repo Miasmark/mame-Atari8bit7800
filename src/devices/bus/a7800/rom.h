@@ -6,7 +6,10 @@
 #pragma once
 
 #include "a78_slot.h"
+
 #include "sound/pokey.h"
+
+#include "speaker.h"
 
 
 // ======================> a78_rom_device
@@ -306,13 +309,14 @@ protected:
 };
 
 
-// ======================> a78_pokey440_device
+// ======================> a78_pokey440_base
 
 // A $0450 POKEY cart with a second POKEY at $0440 (the "Dual POKEY 440 450" homebrew boards:
 // header bit $0400, A78 v4 audio field 3). The two are separate chips, each with its own AUDCTL,
-// timers and RANDOM, mixed on the cart's audio line.
+// timers and RANDOM, mixed on the cart's audio line. The base board has the $0450 POKEY; speaker
+// is the tag of the base board's speaker, which both chips go to.
 template <class Base>
-class a78_pokey440_device : public Base
+class a78_pokey440_base : public Base
 {
 public:
 	virtual uint8_t read_04xx(offs_t offset) override
@@ -330,7 +334,7 @@ public:
 	}
 
 protected:
-	a78_pokey440_device(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, uint32_t clock, const char *speaker)
+	a78_pokey440_base(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, uint32_t clock, const char *speaker)
 		: Base(mconfig, type, tag, owner, clock)
 		, m_pokey440(*this, "pokey440")
 		, m_speaker(speaker)
@@ -349,142 +353,93 @@ protected:
 	const char *const m_speaker;
 };
 
-class a78_rom_p440_p450_device : public a78_pokey440_device<a78_rom_p450_device>
+class a78_rom_p440_p450_device : public a78_pokey440_base<a78_rom_p450_device>
 {
 public:
 	a78_rom_p440_p450_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
 };
 
-class a78_rom_p440_p450_sg_ram_device : public a78_pokey440_device<a78_rom_p450_sg_ram_device>
+class a78_rom_p440_p450_sg_ram_device : public a78_pokey440_base<a78_rom_p450_sg_ram_device>
 {
 public:
 	a78_rom_p440_p450_sg_ram_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
 };
 
-class a78_rom_p440_p450_sg9_device : public a78_pokey440_device<a78_rom_p450_sg9_device>
+class a78_rom_p440_p450_sg9_device : public a78_pokey440_base<a78_rom_p450_sg9_device>
 {
 public:
 	a78_rom_p440_p450_sg9_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
 };
 
 
+// ======================> a78_pokey800_base
 
+// A POKEY at $0800-$0fff added to a board (homebrew boards: header bit $8000). It has a speaker of
+// its own, "pokey_800", unless the board already has one: then pass that speaker's tag.
+template <class Base>
+class a78_pokey800_base : public Base
+{
+public:
+	virtual uint8_t read_08xx(offs_t offset) override { return m_pokey800->read(offset & 0x0f); }
+	virtual void write_08xx(offs_t offset, uint8_t data) override { m_pokey800->write(offset & 0x0f, data); }
 
+protected:
+	a78_pokey800_base(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, uint32_t clock, const char *speaker = nullptr)
+		: Base(mconfig, type, tag, owner, clock)
+		, m_pokey800(*this, "pokey800")
+		, m_speaker(speaker)
+	{
+	}
+
+	virtual void device_add_mconfig(machine_config &config) override ATTR_COLD
+	{
+		Base::device_add_mconfig(config);
+		if (!m_speaker)
+			SPEAKER(config, "pokey_800").front_center();
+		POKEY(config, m_pokey800, DERIVED_CLOCK(1, 1)).add_route(ALL_OUTPUTS, m_speaker ? m_speaker : "pokey_800", 1.00);
+	}
+
+	required_device<pokey_device> m_pokey800;
+	const char *const m_speaker;
+};
 
 
 // PCB variants with a POKEY at $0800 (homebrew pcb)
 
-// ======================> a78_rom_p800_device
-
-class a78_rom_p800_device : public a78_rom_device
+class a78_rom_p800_device : public a78_pokey800_base<a78_rom_device>
 {
 public:
-	// construction/destruction
 	a78_rom_p800_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
-
-	// reading and writing
-	virtual uint8_t read_08xx(offs_t offset) override { return m_pokey800->read(offset & 0x0f); }
-	virtual void write_08xx(offs_t offset, uint8_t data) override { m_pokey800->write(offset & 0x0f, data); }
-
-protected:
-	virtual void device_add_mconfig(machine_config &config) override ATTR_COLD;
-
-	required_device<pokey_device> m_pokey800;
 };
 
-
-// ======================> a78_rom_p800_ram_device
-
-class a78_rom_p800_ram_device : public a78_rom_ram_device
+class a78_rom_p800_ram_device : public a78_pokey800_base<a78_rom_ram_device>
 {
 public:
-	// construction/destruction
 	a78_rom_p800_ram_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
-
-	// reading and writing
-	virtual uint8_t read_08xx(offs_t offset) override { return m_pokey800->read(offset & 0x0f); }
-	virtual void write_08xx(offs_t offset, uint8_t data) override { m_pokey800->write(offset & 0x0f, data); }
-
-protected:
-	virtual void device_add_mconfig(machine_config &config) override ATTR_COLD;
-
-	required_device<pokey_device> m_pokey800;
 };
 
-
-// ======================> a78_rom_p800_pokey_device
-
-class a78_rom_p800_pokey_device : public a78_rom_pokey_device
+class a78_rom_p800_pokey_device : public a78_pokey800_base<a78_rom_pokey_device>
 {
 public:
-	// construction/destruction
 	a78_rom_p800_pokey_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
-
-	// reading and writing
-	virtual uint8_t read_08xx(offs_t offset) override { return m_pokey800->read(offset & 0x0f); }
-	virtual void write_08xx(offs_t offset, uint8_t data) override { m_pokey800->write(offset & 0x0f, data); }
-
-protected:
-	virtual void device_add_mconfig(machine_config &config) override ATTR_COLD;
-
-	required_device<pokey_device> m_pokey800;
 };
 
-
-// ======================> a78_rom_p800_sg_device
-
-class a78_rom_p800_sg_device : public a78_rom_sg_device
+class a78_rom_p800_sg_device : public a78_pokey800_base<a78_rom_sg_device>
 {
 public:
-	// construction/destruction
 	a78_rom_p800_sg_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
-
-	// reading and writing
-	virtual uint8_t read_08xx(offs_t offset) override { return m_pokey800->read(offset & 0x0f); }
-	virtual void write_08xx(offs_t offset, uint8_t data) override { m_pokey800->write(offset & 0x0f, data); }
-
-protected:
-	virtual void device_add_mconfig(machine_config &config) override ATTR_COLD;
-
-	required_device<pokey_device> m_pokey800;
 };
 
-
-// ======================> a78_rom_p800_sg_ram_device
-
-class a78_rom_p800_sg_ram_device : public a78_rom_sg_ram_device
+class a78_rom_p800_sg_ram_device : public a78_pokey800_base<a78_rom_sg_ram_device>
 {
 public:
-	// construction/destruction
 	a78_rom_p800_sg_ram_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
-
-	// reading and writing
-	virtual uint8_t read_08xx(offs_t offset) override { return m_pokey800->read(offset & 0x0f); }
-	virtual void write_08xx(offs_t offset, uint8_t data) override { m_pokey800->write(offset & 0x0f, data); }
-
-protected:
-	virtual void device_add_mconfig(machine_config &config) override ATTR_COLD;
-
-	required_device<pokey_device> m_pokey800;
 };
 
-
-// ======================> a78_rom_p800_sg9_device
-
-class a78_rom_p800_sg9_device : public a78_rom_sg9_device
+class a78_rom_p800_sg9_device : public a78_pokey800_base<a78_rom_sg9_device>
 {
 public:
-	// construction/destruction
 	a78_rom_p800_sg9_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
-
-	// reading and writing
-	virtual uint8_t read_08xx(offs_t offset) override { return m_pokey800->read(offset & 0x0f); }
-	virtual void write_08xx(offs_t offset, uint8_t data) override { m_pokey800->write(offset & 0x0f, data); }
-
-protected:
-	virtual void device_add_mconfig(machine_config &config) override ATTR_COLD;
-
-	required_device<pokey_device> m_pokey800;
 };
 
 

@@ -36,26 +36,19 @@ public:
 	virtual void write_40xx(offs_t offset, uint8_t data) override;
 
 protected:
+	a78_bankset_sg_device(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, uint32_t clock);
 };
 
 
 // ======================> a78_bankset_sg_p800_device
 
-class a78_bankset_sg_p800_device : public a78_rom_sg_device
+class a78_bankset_sg_p800_device : public a78_pokey800_base<a78_bankset_sg_device>
 {
 public:
 	a78_bankset_sg_p800_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
 
 	// reading and writing
 	virtual uint8_t read_40xx(offs_t offset) override;
-	virtual void write_40xx(offs_t offset, uint8_t data) override;
-	virtual uint8_t read_08xx(offs_t offset) override { return m_pokey800->read(offset & 0x0f); }
-	virtual void write_08xx(offs_t offset, uint8_t data) override { m_pokey800->write(offset & 0x0f, data); }
-
-protected:
-	virtual void device_add_mconfig(machine_config &config) override ATTR_COLD;
-
-	required_device<pokey_device> m_pokey800;
 };
 
 
@@ -71,26 +64,16 @@ public:
 	virtual void write_40xx(offs_t offset, uint8_t data) override;
 
 protected:
+	a78_bankset_sg_bankram_device(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, uint32_t clock);
 };
 
 
 // ======================> a78_bankset_sg_bankram_p800_device
 
-class a78_bankset_sg_bankram_p800_device : public a78_rom_sg_device
+class a78_bankset_sg_bankram_p800_device : public a78_pokey800_base<a78_bankset_sg_bankram_device>
 {
 public:
 	a78_bankset_sg_bankram_p800_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
-
-	// reading and writing
-	virtual uint8_t read_40xx(offs_t offset) override;
-	virtual void write_40xx(offs_t offset, uint8_t data) override;
-	virtual uint8_t read_08xx(offs_t offset) override { return m_pokey800->read(offset & 0x0f); }
-	virtual void write_08xx(offs_t offset, uint8_t data) override { m_pokey800->write(offset & 0x0f, data); }
-
-protected:
-	virtual void device_add_mconfig(machine_config &config) override ATTR_COLD;
-
-	required_device<pokey_device> m_pokey800;
 };
 
 
@@ -112,18 +95,10 @@ protected:
 
 // ======================> a78_bankset_sg_ram_p800_device
 
-class a78_bankset_sg_ram_p800_device : public a78_bankset_sg_ram_device
+class a78_bankset_sg_ram_p800_device : public a78_pokey800_base<a78_bankset_sg_ram_device>
 {
 public:
 	a78_bankset_sg_ram_p800_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
-
-	virtual uint8_t read_08xx(offs_t offset) override { return m_pokey800->read(offset & 0x0f); }
-	virtual void write_08xx(offs_t offset, uint8_t data) override { m_pokey800->write(offset & 0x0f, data); }
-
-protected:
-	virtual void device_add_mconfig(machine_config &config) override ATTR_COLD;
-
-	required_device<pokey_device> m_pokey800;
 };
 
 
@@ -138,37 +113,27 @@ public:
 	virtual uint8_t read_40xx(offs_t offset) override;
 
 protected:
+	a78_bankset_rom_device(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, uint32_t clock);
 };
 
 
 // ======================> a78_bankset_rom_p800_device
 
-class a78_bankset_rom_p800_device : public a78_rom_device
+class a78_bankset_rom_p800_device : public a78_pokey800_base<a78_bankset_rom_device>
 {
 public:
 	a78_bankset_rom_p800_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
-
-	// reading and writing
-	virtual uint8_t read_40xx(offs_t offset) override;
-	virtual uint8_t read_08xx(offs_t offset) override { return m_pokey800->read(offset & 0x0f); }
-	virtual void write_08xx(offs_t offset, uint8_t data) override { m_pokey800->write(offset & 0x0f, data); }
-
-protected:
-	virtual void device_add_mconfig(machine_config &config) override ATTR_COLD;
-
-	required_device<pokey_device> m_pokey800;
 };
 
 
 // ======================> a78_bankset_rom_p4000_device
 
-class a78_bankset_rom_p4000_device : public a78_rom_device
+class a78_bankset_rom_p4000_device : public a78_bankset_rom_device
 {
 public:
 	a78_bankset_rom_p4000_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
 
 	// reading and writing
-	virtual uint8_t read_40xx(offs_t offset) override;
 	virtual void write_40xx(offs_t offset, uint8_t data) override;
 
 protected:
@@ -190,26 +155,16 @@ public:
 	virtual void write_40xx(offs_t offset, uint8_t data) override;
 
 protected:
+	a78_bankset_bankram_device(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, uint32_t clock);
 };
 
 
 // ======================> a78_bankset_bankram_p800_device
 
-class a78_bankset_bankram_p800_device : public a78_rom_device
+class a78_bankset_bankram_p800_device : public a78_pokey800_base<a78_bankset_bankram_device>
 {
 public:
 	a78_bankset_bankram_p800_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
-
-	// reading and writing
-	virtual uint8_t read_40xx(offs_t offset) override;
-	virtual void write_40xx(offs_t offset, uint8_t data) override;
-	virtual uint8_t read_08xx(offs_t offset) override { return m_pokey800->read(offset & 0x0f); }
-	virtual void write_08xx(offs_t offset, uint8_t data) override { m_pokey800->write(offset & 0x0f, data); }
-
-protected:
-	virtual void device_add_mconfig(machine_config &config) override ATTR_COLD;
-
-	required_device<pokey_device> m_pokey800;
 };
 
 
@@ -225,19 +180,18 @@ public:
 	virtual uint8_t read_30xx(offs_t offset) override;
 
 protected:
+	a78_bankset_rom_52k_device(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, uint32_t clock);
 };
 
 
 // ======================> a78_bankset_rom_52k_p4000_device
 
-class a78_bankset_rom_52k_p4000_device : public a78_rom_device
+class a78_bankset_rom_52k_p4000_device : public a78_bankset_rom_52k_device
 {
 public:
 	a78_bankset_rom_52k_p4000_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
 
 	// reading and writing
-	virtual uint8_t read_40xx(offs_t offset) override;
-	virtual uint8_t read_30xx(offs_t offset) override;
 	virtual void write_40xx(offs_t offset, uint8_t data) override;
 
 protected:
