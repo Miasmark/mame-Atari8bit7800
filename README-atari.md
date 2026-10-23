@@ -66,8 +66,12 @@ mode. With Warm, every colour matches the Pocket core's own screenshots of a col
   revised DMA timing (October 2026): a display list interrupt costs no DMA time, holey character
   objects cost 6 or 9 cycles, and the first DMA of each frame 8 more.
 - **No BIOS file needed.** Without one the 7800 boots straight into the cartridge, as with
-  `-bios skip`, and the system is not shown as missing its ROMs. With the BIOS file in the ROM folder
-  it runs as before; `-bios skip` still skips it.
+  `-bios skip`, and the system is not shown as missing its ROMs; MAME notes at start that the
+  optional BIOS file is missing. `bios skip` in `a7800.ini` (or `a7800p.ini`) makes skipping the
+  default and drops that note. With the BIOS file in the ROM folder it runs as before; `-bios skip`
+  still skips it. Skipping starts the cartridge where 7800OpenBIOS does in the frame, without the
+  signature check, so a signed and an unsigned image of the same game start on the same cycle and
+  an input recording plays back the same on both.
 - **High Score Cartridge from its own image:** `-cart "High Score Cartridge.a78" -cart2 game.a78`
   (the software list entry `hiscore` works as before). Its scores are saved in the nvram folder.
 - **SaveKey / AtariVox in controller port 2** (Machine Configuration, Controller Port 2): Auto plugs
