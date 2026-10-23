@@ -686,6 +686,7 @@ std::pair<std::error_condition, std::string> a78_cart_slot_device::call_load()
 			if (m_savekey)
 			{
 				osd_printf_info("This cart uses a SaveKey or AtariVox (its memory, its voice) in controller port 2.\n");
+				osd_printf_info("The AtariVox's voice is an approximation of the SpeakJet's.\n");
 				osd_printf_info("It is plugged in there unless Machine Configuration says otherwise.\n");
 			}
 
