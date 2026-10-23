@@ -1907,7 +1907,7 @@ void a7800_state::a7800_common(machine_config &config, uint32_t clock)
 
 	A78_CART_SLOT(config, m_cart, clock/8, a7800_cart, nullptr);
 	I2C_24C256(config, m_savekey);  // a SaveKey in port 2
-	ATARIVOX_VOICE(config, m_voice).add_route(ALL_OUTPUTS, "mono", 1.00);    // and an AtariVox's voice
+	ATARIVOX_VOICE(config, m_voice, atarivox_voice_device::CLOCK).add_route(ALL_OUTPUTS, "mono", 1.00);    // and an AtariVox's voice
 	m_cart->set_vcs_image("cartridge2600");
 
 	// 2600 mode: the 2600's bus, its cartridge slot (-cart2600) and the TIA's video

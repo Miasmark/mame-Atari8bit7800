@@ -1,5 +1,5 @@
 // license:BSD-3-Clause
-// copyright-holders:a7800 toolkit contributors
+// copyright-holders:Miasmark
 /**********************************************************************
 
     Atari XG-1 light gun
@@ -24,7 +24,8 @@
 
     TODO:
     - the sensor's field of view, its response time and the brightness
-      it needs are estimates, not measurements
+      it needs (tia_video_device::light_sensor) are estimates, not
+      measurements
 
 **********************************************************************/
 

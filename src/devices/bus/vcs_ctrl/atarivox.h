@@ -21,7 +21,10 @@ class atarivox_voice_device : public device_t, public device_sound_interface
 public:
 	static constexpr feature_type imperfect_features() { return feature::SOUND; }
 
-	atarivox_voice_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock = 14'318'182);
+	// the openfpga-7800 core's clk_sys (NTSC), which its serial timing and 16,384 Hz tick come from
+	static constexpr u32 CLOCK = 14'318'182;
+
+	atarivox_voice_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
 
 	void line_w(int state);     // pin 1 (Up) as the console drives it: 1 when let go
 	int ready_r();              // pin 2 (Down): low while the buffer is half full
@@ -39,7 +42,7 @@ private:
 	emu_timer *m_rx_timer;
 
 	// the serial input and the 64-byte buffer
-	int m_line;
+	u8 m_line;
 	u8 m_rx_bit;                // 0 idle, 1 start, 2-9 data, 10 stop
 	u8 m_rx_shift;
 	bool m_scp;                 // in serial control mode
