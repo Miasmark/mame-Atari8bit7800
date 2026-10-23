@@ -121,7 +121,6 @@ public:
 
 	// slot interface overrides
 	virtual std::string get_default_card_software(get_default_card_software_hook &hook) const override;
-	int identify_cart_type(const uint8_t *header) const;
 	virtual std::pair<std::error_condition, std::string> call_load() override;
 	virtual void call_unload() override;
 
@@ -157,6 +156,7 @@ private:
 
 	int m_type = 0;
 	bool m_is_xegs = false;
+	mutable std::string m_car_warned;   // the last CART header warning (MAME asks for the slot more than once)
 };
 
 class a5200_cart_slot_device;
@@ -212,7 +212,6 @@ public:
 
 	// slot interface overrides
 	virtual std::string get_default_card_software(get_default_card_software_hook &hook) const override;
-	int identify_cart_type(const uint8_t *header) const;
 	virtual std::pair<std::error_condition, std::string> call_load() override;
 	virtual void call_unload() override;
 
@@ -229,6 +228,7 @@ private:
 
 	address_space *m_space_mem;
 	int m_type;
+	mutable std::string m_car_warned;   // the last CART header warning (MAME asks for the slot more than once)
 };
 
 // device type declaration

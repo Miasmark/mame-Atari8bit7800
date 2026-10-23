@@ -18,7 +18,6 @@
 #include "logmacro.h"
 
 #define CYCLES_PER_LINE 114     /* total number of cpu cycles per scanline (incl. hblank) */
-#define CYCLES_REFRESH  9       /* number of cycles lost for ANTICs RAM refresh using DMA */
 #define CYCLES_HSTART   32      /* where does the ANTIC DMA fetch start */
 #define CYCLES_DLI_NMI  8       /* ANTIC pulls NMI at cycle 8, after display list and P/M DMA */
 #define CYCLES_HSYNC    104     /* where does the HSYNC position of a scanline start */
@@ -110,7 +109,6 @@
 #define HUE     0xf0    /* 11110000b hue bits             */
 
 #define TRIGGER_VBLANK  64715
-#define TRIGGER_STEAL   64716
 #define TRIGGER_HSYNC   64717
 
 
@@ -254,12 +252,10 @@
 	--m_modelines
 
 #define POST_GFX(width)                                         \
-	m_steal_cycles += width;                                \
 	if (--m_modelines == 0)                                 \
 		m_voffs = (m_voffs + width) & VOFFS
 
 #define POST_TXT(width)                                         \
-	m_steal_cycles += width;                                \
 	if (--m_modelines == 0)                                 \
 		m_voffs = (m_voffs + width) & VOFFS;            \
 	else if (m_w.chactl & 4)                                \
@@ -311,12 +307,10 @@ antic_device::antic_device(const machine_config &mconfig, const char *tag, devic
 	m_render1(0),
 	m_render2(0),
 	m_render3(0),
-	m_cycle_steal_timer(nullptr),
 	m_issue_dli_timer(nullptr),
 	m_scanline_timer(nullptr),
 	m_line_done_timer(nullptr),
 	m_cmd(0),
-	m_steal_cycles(0),
 	m_vscrol_old(0),
 	m_hscrol_old(0),
 	m_modelines(0),
@@ -377,7 +371,6 @@ void antic_device::device_start()
 	save_item(NAME(m_render2));
 	save_item(NAME(m_render3));
 	save_item(NAME(m_cmd));
-	save_item(NAME(m_steal_cycles));
 	save_item(NAME(m_dma_busy));
 	save_item(NAME(m_dma_run));
 	save_item(NAME(m_dma_runs));
@@ -407,7 +400,6 @@ void antic_device::device_start()
 	save_pointer(NAME(m_cclk_expand), 37 * 256);
 
 	/* timers */
-	m_cycle_steal_timer = timer_alloc(FUNC(antic_device::steal_cycles), this);
 	m_issue_dli_timer = timer_alloc(FUNC(antic_device::issue_dli), this);
 	m_scanline_timer = timer_alloc(FUNC(antic_device::scanline_render), this);
 	m_line_done_timer = timer_alloc(FUNC(antic_device::line_done), this);
@@ -417,7 +409,6 @@ void antic_device::device_start()
 	m_dl_fetched = m_dl_addr_fetched = m_line_rendered = false;
 	std::fill(std::begin(m_dma_busy), std::end(m_dma_busy), DMA_FREE);
 
-	m_cycle_steal_timer->adjust(attotime::never);
 	m_issue_dli_timer->adjust(attotime::never);
 	m_scanline_timer->adjust(attotime::never);
 	m_line_done_timer->adjust(attotime::never);
@@ -1967,24 +1958,6 @@ TIMER_CALLBACK_MEMBER( antic_device::line_done )
 
 /*****************************************************************************
  *
- *  Antic Steal Cycles
- *  This is called once per scanline by a interrupt issued in the
- *  atari_scanline_render function. Set a new timer for the HSYNC
- *  position and release the CPU; but hold it again immediately until
- *  TRIGGER_HSYNC if WSYNC (D01A) was accessed
- *
- *****************************************************************************/
-TIMER_CALLBACK_MEMBER( antic_device::steal_cycles )
-{
-	LOG("           @cycle #%3d steal %d cycles\n", cycle(), m_steal_cycles);
-	m_line_done_timer->adjust((attotime)screen().pixel_period() * (m_steal_cycles));
-	m_steal_cycles = 0;
-	m_maincpu->spin_until_trigger(TRIGGER_STEAL);
-}
-
-
-/*****************************************************************************
- *
  *  Antic Scan Line Render
  *  Render the scanline to the scrbitmap buffer.
  *  Also transport player/missile data to the grafp and grafm registers
@@ -2008,13 +1981,11 @@ TIMER_CALLBACK_MEMBER( antic_device::scanline_render )
 			/* transport missile data to GTIA ? */
 			if( m_w.dmactl & DMA_MISSILE )
 			{
-				m_steal_cycles += 1;
 				m_gtia->write(0x11, RDPMGFXD(space, 3*256));
 			}
 			/* transport player data to GTIA ? */
 			if( m_w.dmactl & DMA_PLAYER )
 			{
-				m_steal_cycles += 4;
 				m_gtia->write(0x0d, RDPMGFXD(space, 4*256));
 				m_gtia->write(0x0e, RDPMGFXD(space, 5*256));
 				m_gtia->write(0x0f, RDPMGFXD(space, 6*256));
@@ -2026,15 +1997,11 @@ TIMER_CALLBACK_MEMBER( antic_device::scanline_render )
 			/* transport missile data to GTIA ? */
 			if( m_w.dmactl & DMA_MISSILE )
 			{
-				if( (m_scanline & 1) == 0 )      /* even line ? */
-					m_steal_cycles += 1;
 				m_gtia->write(0x11, RDPMGFXS(space, 3*128));
 			}
 			/* transport player data to GTIA ? */
 			if( m_w.dmactl & DMA_PLAYER )
 			{
-				if( (m_scanline & 1) == 0 )      /* even line ? */
-					m_steal_cycles += 4;
 				m_gtia->write(0x0d, RDPMGFXS(space, 4*128));
 				m_gtia->write(0x0e, RDPMGFXS(space, 5*128));
 				m_gtia->write(0x0f, RDPMGFXS(space, 6*128));
@@ -2047,7 +2014,6 @@ TIMER_CALLBACK_MEMBER( antic_device::scanline_render )
 		m_gtia->render((uint8_t *)m_pmbits + PMOFFSET, (uint8_t *)m_cclock + PMOFFSET - m_hscrol_old, m_prio_table[m_gtia->get_w_prior() & 0x3f].get(), (uint8_t *)&m_pmbits);
 
 	/* the CPU is held for this line's DMA cycle by cycle (build_dma_map), not here */
-	m_steal_cycles = 0;
 	m_line_rendered = true;
 }
 
@@ -2058,8 +2024,8 @@ void antic_device::LMS(int new_cmd)
 	/**************************************************************
 	 * If the LMS bit (load memory scan) of the current display
 	 * list command is set, load the video source address from the
-	 * following two bytes and split it up into video page/offset.
-	 * Steal two more cycles from the CPU for fetching the address.
+	 * following two bytes and split it up into video page/offset
+	 * (build_dma_map holds the CPU for the two fetches).
 	 **************************************************************/
 	if( new_cmd & ANTIC_LMS )
 	{
@@ -2071,8 +2037,6 @@ void antic_device::LMS(int new_cmd)
 		m_vpage = addr & VPAGE;
 		m_voffs = addr & VOFFS;
 		LOG("           LMS $%04x\n", addr);
-		/* steal two more clock cycles from the cpu */
-		m_steal_cycles += 2;
 		m_dl_addr_fetched = true;
 	}
 }
@@ -2106,8 +2070,6 @@ void antic_device::scanline_dma(int param)
 
 				new_cmd = RDANTIC(space);
 				m_doffs = (m_doffs + 1) & DOFFS;
-				/* steal at one clock cycle from the CPU for fetching the command */
-				m_steal_cycles += 1;
 				m_dl_fetched = true;
 				LOG("           ANTIC CMD $%02x\n", new_cmd);
 				/* command 1 .. 15 ? */
@@ -2339,10 +2301,10 @@ void antic_device::scanline_dma(int param)
 
 void antic_device::build_dma_map()
 {
-	static const uint8_t rate[16] = { 0, 0, 2, 2, 2, 2, 4, 4, 8, 8, 4, 4, 4, 2, 2, 2 };
-	static const uint8_t window[4] = { 0, 64, 80, 96 };
-	static const uint8_t map_start[4] = { 0, 28, 20, 12 };
-	static const uint8_t chr_start[4] = { 0, 26, 18, 10 };
+	static constexpr uint8_t RATE[16] = { 0, 0, 2, 2, 2, 2, 4, 4, 8, 8, 4, 4, 4, 2, 2, 2 };
+	static constexpr uint8_t WINDOW[4] = { 0, 64, 80, 96 };
+	static constexpr uint8_t MAP_START[4] = { 0, 28, 20, 12 };
+	static constexpr uint8_t CHR_START[4] = { 0, 26, 18, 10 };
 
 	std::fill(std::begin(m_dma_busy), std::end(m_dma_busy), DMA_FREE);
 	bool const visible = m_scanline >= VBL_END && m_scanline < VBL_START;
@@ -2367,20 +2329,20 @@ void antic_device::build_dma_map()
 	{
 		bool const first = m_dl_fetched;
 		int delay = 0;
-		int const fetches = window[width] / rate[mode];
+		int const fetches = WINDOW[width] / RATE[mode];
 		if( m_cmd & ANTIC_HSCR )
 		{
 			if( width < 3 )
 				width++;
 			delay = m_w.hscrol >> 1;
 		}
-		int const count = (m_cmd & ANTIC_HSCR) ? window[width] / rate[mode] : fetches;
+		int const count = (m_cmd & ANTIC_HSCR) ? WINDOW[width] / RATE[mode] : fetches;
 		if( mode <= 7 )
 		{
-			int const s = chr_start[width] + delay;
+			int const s = CHR_START[width] + delay;
 			for( int k = 0; k < count; k++ )
 			{
-				int const c = s + k * rate[mode];
+				int const c = s + k * RATE[mode];
 				if( first && c < 106 )
 					m_dma_busy[c] = DMA_PF;
 				if( c + 3 < 106 )
@@ -2389,10 +2351,10 @@ void antic_device::build_dma_map()
 		}
 		else if( first )
 		{
-			int const s = map_start[width] + delay;
+			int const s = MAP_START[width] + delay;
 			for( int k = 0; k < count; k++ )
 			{
-				int const c = s + k * rate[mode];
+				int const c = s + k * RATE[mode];
 				if( c < 106 )
 					m_dma_busy[c] = DMA_PF;
 			}
@@ -2429,10 +2391,10 @@ void antic_device::build_dma_map()
 		m_dma_runs++;
 	}
 	m_dma_run = 0;
-	schedule_dma_run(0);
+	schedule_dma_run();
 }
 
-void antic_device::schedule_dma_run(int from)
+void antic_device::schedule_dma_run()
 {
 	if( m_dma_run >= m_dma_runs )
 	{
@@ -2450,7 +2412,7 @@ TIMER_CALLBACK_MEMBER( antic_device::dma_cycles )
 	int const len = m_dma_run_len[m_dma_run];
 	m_maincpu->spin_until_time(ANTIC_TIME_FROM_CYCLES(len));
 	m_dma_run++;
-	schedule_dma_run(0);
+	schedule_dma_run();
 }
 
 

@@ -299,15 +299,15 @@ struct car_type
 	const char *name;
 };
 
-const car_type car_types[] =
+constexpr car_type CAR_TYPES[] =
 {
 	{  1, false,     8, "Standard 8 KB cartridge" },
 	{  2, false,    16, "Standard 16 KB cartridge" },
 	{  3, false,    16, "OSS two chip 16 KB cartridge (034M)" },
-	{  4, true ,    32, "Standard 32 KB 5200 cartridge" },
+	{  4, true,     32, "Standard 32 KB 5200 cartridge" },
 	{  5, false,    32, "DB 32 KB cartridge" },
-	{  6, true ,    16, "Two chip 16 KB 5200 cartridge" },
-	{  7, true ,    40, "Bounty Bob Strikes Back 40 KB 5200 cartridge" },
+	{  6, true,     16, "Two chip 16 KB 5200 cartridge" },
+	{  7, true,     40, "Bounty Bob Strikes Back 40 KB 5200 cartridge" },
 	{  8, false,    64, "64 KB Williams cartridge" },
 	{  9, false,    64, "Express 64 KB cartridge" },
 	{ 10, false,    64, "Diamond 64 KB cartridge" },
@@ -316,11 +316,11 @@ const car_type car_types[] =
 	{ 13, false,    64, "XEGS 64 KB cartridge" },
 	{ 14, false,   128, "XEGS 128 KB cartridge" },
 	{ 15, false,    16, "OSS one chip 16 KB cartridge" },
-	{ 16, true ,    16, "One chip 16 KB 5200 cartridge" },
+	{ 16, true,     16, "One chip 16 KB 5200 cartridge" },
 	{ 17, false,   128, "Atrax 128 KB cartridge" },
 	{ 18, false,    40, "Bounty Bob Strikes Back 40 KB cartridge" },
-	{ 19, true ,     8, "Standard 8 KB 5200 cartridge" },
-	{ 20, true ,     4, "Standard 4 KB 5200 cartridge" },
+	{ 19, true,      8, "Standard 8 KB 5200 cartridge" },
+	{ 20, true,      4, "Standard 4 KB 5200 cartridge" },
 	{ 21, false,     8, "Right slot 8 KB cartridge" },
 	{ 22, false,    32, "32 KB Williams cartridge" },
 	{ 23, false,   256, "XEGS 256 KB cartridge" },
@@ -365,7 +365,7 @@ const car_type car_types[] =
 
 const car_type *find_car_type(uint32_t id)
 {
-	for (auto const &t : car_types)
+	for (auto const &t : CAR_TYPES)
 		if (t.id == id)
 			return &t;
 	return nullptr;
@@ -420,16 +420,16 @@ bool is_car_header(const uint8_t *header, uint64_t len)
 }
 
 // say something about a header once, though MAME asks for the slot more than once
-void car_warn(std::string const &text)
+void car_warn(std::string &last, std::string const &text)
 {
-	static std::string last;
 	if (text != last)
 		osd_printf_warning("%s\n", text);
 	last = text;
 }
 
-// the PCB for a header; `verbose` says what does not fit (when the slot is chosen)
-int identify_car(const uint8_t *header, uint64_t datalen, bool verbose)
+// the PCB for a header; with `warned` (the last warning given), it says what does not fit (when the
+// slot is chosen)
+int identify_car(const uint8_t *header, uint64_t datalen, std::string *warned)
 {
 	uint32_t const id = get_u32be(&header[4]);
 	car_type const *const t = find_car_type(id);
@@ -440,14 +440,14 @@ int identify_car(const uint8_t *header, uint64_t datalen, bool verbose)
 		// not emulated: the plain cartridge its size would be, which at least shows the first bank
 		pcb = (t && t->a5200) ? (datalen > 0x4000 ? A5200_32K : datalen > 0x2000 ? A5200_16K : datalen > 0x1000 ? A5200_8K : A5200_4K)
 				: (datalen > 0x2000 ? A800_16K : A800_8K);
-		if (verbose)
-			car_warn(util::string_format("%s is not emulated by MAME; loading it as MAME's %s, which will not run it properly",
+		if (warned)
+			car_warn(*warned, util::string_format("%s is not emulated by MAME; loading it as MAME's %s, which will not run it properly",
 					name, a800_get_slot(pcb)));
 	}
-	else if (verbose && id >= 33 && id <= 38)
-		car_warn(util::string_format("%s: loaded as XEGS; the switch that turns the cartridge off is not emulated", name));
-	if (verbose && t && uint64_t(t->size_kb) * 1024 != datalen)
-		car_warn(util::string_format("%s should hold %u KB, but the file has %u bytes after its header", name, t->size_kb, uint32_t(datalen)));
+	else if (warned && id >= 33 && id <= 38)
+		car_warn(*warned, util::string_format("%s: loaded as XEGS; the switch that turns the cartridge off is not emulated", name));
+	if (warned && t && uint64_t(t->size_kb) * 1024 != datalen)
+		car_warn(*warned, util::string_format("%s should hold %u KB, but the file has %u bytes after its header", name, t->size_kb, uint32_t(datalen)));
 	return pcb;
 }
 
@@ -481,7 +481,7 @@ std::pair<std::error_condition, std::string> a800_cart_slot_device::call_load()
 			bool const has_header = len >= 0x10 && fread(header, 0x10) == 0x10 && is_car_header(header, len);
 			if (has_header)
 			{
-				m_type = identify_car(header, len - 0x10, false);
+				m_type = identify_car(header, len - 0x10, nullptr);
 				len -= 0x10;
 			}
 			else    // otherwise try to guess based on size
@@ -547,7 +547,7 @@ std::pair<std::error_condition, std::string> a5200_cart_slot_device::call_load()
 			bool const has_header = len >= 0x10 && fread(header, 0x10) == 0x10 && is_car_header(header, len);
 			if (has_header)
 			{
-				m_type = identify_car(header, len - 0x10, false);
+				m_type = identify_car(header, len - 0x10, nullptr);
 				len -= 0x10;
 			}
 			else    // otherwise try to guess based on size
@@ -595,21 +595,6 @@ void a5200_cart_slot_device::call_unload()
 
 
 /*-------------------------------------------------
- identify_cart_type - code to detect cart type from
- fullpath
- -------------------------------------------------*/
-
-int a800_cart_slot_device::identify_cart_type(const uint8_t *header) const
-{
-	return identify_car(header, 0, false);   // the size is checked, and reported, when the slot is chosen
-}
-
-int a5200_cart_slot_device::identify_cart_type(const uint8_t *header) const
-{
-	return identify_car(header, 0, false);   // the size is checked, and reported, when the slot is chosen
-}
-
-/*-------------------------------------------------
  get default card software
  -------------------------------------------------*/
 
@@ -631,7 +616,7 @@ std::string a800_cart_slot_device::get_default_card_software(get_default_card_so
 			/*auto const [err, actual] =*/ read(*hook.image_file(), &head[0], 0x10); // FIXME: check error return or read returning short
 		if (is_car_header(head, len))
 		{
-			type = identify_car(&head[0], len - 0x10, true);
+			type = identify_car(&head[0], len - 0x10, &m_car_warned);
 		}
 		else    // otherwise try to guess based on size
 		{
@@ -677,7 +662,7 @@ std::string a5200_cart_slot_device::get_default_card_software(get_default_card_s
 			/*auto const [err, actual] =*/ read(*hook.image_file(), &head[0], 0x10); // FIXME: check error return or read returning short
 		if (is_car_header(head, len))
 		{
-			type = identify_car(&head[0], len - 0x10, true);
+			type = identify_car(&head[0], len - 0x10, &m_car_warned);
 		}
 		else
 		{
