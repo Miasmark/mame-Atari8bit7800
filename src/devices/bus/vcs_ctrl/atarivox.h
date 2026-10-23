@@ -16,11 +16,12 @@
 
 // ======================> atarivox_voice_device
 
+// The voice is an approximation of the SpeakJet's, which it says on screen once a game first talks
+// to it. It carries no imperfect-sound flag: the 7800 has one in every machine, for its port 2,
+// and the flag would mark every 7800 game. The AtariVox on a controller port, below, has it.
 class atarivox_voice_device : public device_t, public device_sound_interface
 {
 public:
-	static constexpr feature_type imperfect_features() { return feature::SOUND; }
-
 	atarivox_voice_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock = 14'318'182);
 
 	void line_w(int state);     // pin 1 (Up) as the console drives it: 1 when let go
