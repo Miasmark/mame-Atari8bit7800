@@ -161,7 +161,6 @@ protected:
 	virtual void device_post_load() override;
 
 	void a7800_common(machine_config &config, uint32_t clock) ATTR_COLD;
-	void skip_missing_bios() ATTR_COLD;
 
 	uint8_t tia_r(offs_t offset);
 	uint8_t bankram_window_r(offs_t offset);
@@ -1695,8 +1694,8 @@ void a7800_state::machine_start()
 	save_item(NAME(m_vcs_mode));
 	save_item(NAME(m_pixelx));
 
-	// a BIOS asked for by name whose file is missing leaves its area empty, with no reset
-	// vector: start as with -bios skip
+	// a BIOS whose file is missing leaves its area empty, with no reset vector: start as with
+	// -bios skip (which "bios skip" in a7800.ini makes the default, without the missing-ROM warning)
 	uint8_t const *const bios = memregion("maincpu")->base();
 	m_no_bios = (system_bios() == m_skip_bios) || (bios[0x3ffc] == 0xff && bios[0x3ffd] == 0xff);
 	if (m_no_bios && system_bios() != m_skip_bios)
@@ -1849,32 +1848,8 @@ void a7800_state::machine_reset()
 	}
 }
 
-// The 7800 runs a cartridge without its BIOS (-bios skip). When the default BIOS's file is not
-// where MAME looks for this system's ROMs (by name or by CRC), "skip" becomes the default, so the
-// system starts without it. The BIOS files are optional, so the system is not shown as missing
-// its ROMs either.
-void a7800_state::skip_missing_bios()
-{
-	emu_file file(mconfig().options().media_path(), searchpath(), OPEN_FLAG_READ);
-	file.set_restrict_to_mediapath(1);
-	for (tiny_rom_entry const *rom = rom_region(); rom && !ROMENTRY_ISEND(rom); ++rom)
-	{
-		// the default BIOS is the first one
-		if (ROMENTRY_ISFILE(rom) && ROM_GETBIOSFLAGS(rom) == 1)
-		{
-			u32 crc = 0;
-			bool const has_crc = util::hash_collection(rom->hashdata).crc(crc);
-			if (!(has_crc ? file.open(rom->name, crc) : file.open(rom->name)))
-				return;
-		}
-	}
-	set_default_bios_tag("skip");
-}
-
 void a7800_state::a7800_common(machine_config &config, uint32_t clock)
 {
-	skip_missing_bios();
-
 	// basic machine hardware
 	M6502(config, m_maincpu, clock/8); // NTSC 1.79 MHz, PAL 1.77 MHz (switches to 1.19 MHz on TIA or RIOT access)
 	m_maincpu->set_addrmap(AS_PROGRAM, &a7800_state::a7800_mem);
@@ -1955,7 +1930,8 @@ void a7800_pal_state::a7800_pal(machine_config &config)
 ***************************************************************************/
 
 // The BIOS files are optional (ROM_OPTIONALMASK: the ROM_OPTIONAL name is deprecated in favour of
-// BIOS options, which these are): without them the system starts as with -bios skip.
+// BIOS options, which these are): without them the system is not shown as missing its ROMs, and
+// starts as with -bios skip (see machine_start).
 ROM_START( a7800 )
 	ROM_REGION(0x4000, "maincpu", ROMREGION_ERASEFF)
 	ROM_SYSTEM_BIOS( 0, "a7800", "Atari 7800" )
