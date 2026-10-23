@@ -24,7 +24,8 @@
     its phrases with "\V0 " to be sure it is out of the mode, then speaks.)
 
     The engine starts with the first start bit it sees, as if the AtariVox
-    were switched on then, so games that never speak cost nothing. The
+    were switched on then, so games that never speak cost nothing; MAME
+    then says, once, that the voice is an approximation. The
     console's reset doesn't reach the AtariVox, so the device has no reset.
 
 **********************************************************************/
@@ -139,6 +140,7 @@ void atarivox_voice_device::line_w(int state)
 		{
 			m_stream->update();
 			m_running = true;
+			machine().popmessage("AtariVox: the voice is an approximation of the SpeakJet's");
 		}
 		m_rx_bit = 1;
 		m_rx_timer->adjust(attotime::from_ticks(BIT_CLKS / 2, clock()));

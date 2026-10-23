@@ -16,11 +16,12 @@
 
 // ======================> atarivox_voice_device
 
+// The voice is an approximation of the SpeakJet's, which it says on screen once a game first talks
+// to it. It carries no imperfect-sound flag: the 7800 has one in every machine, for its port 2,
+// and the flag would mark every 7800 game. The AtariVox on a controller port, below, has it.
 class atarivox_voice_device : public device_t, public device_sound_interface
 {
 public:
-	static constexpr feature_type imperfect_features() { return feature::SOUND; }
-
 	// the openfpga-7800 core's clk_sys (NTSC), which its serial timing and 16,384 Hz tick come from
 	static constexpr u32 CLOCK = 14'318'182;
 
