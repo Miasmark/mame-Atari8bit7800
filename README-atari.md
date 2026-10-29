@@ -1,7 +1,7 @@
 # MAME 0.289 — Atari 2600 / 7800 / 8-bit patch set (unofficial)
 
 An unofficial patch set for MAME 0.289 (tag `mame0289`) that improves the Atari 2600, Atari 7800 and
-Atari 8-bit (400/800/XL/XE/XEGS) drivers. It is not a MAME release and is not supported by MAMEdev:
+Atari 8-bit (400/800/XL/XE/XEGS) drivers, and the Mattel Intellivision's. It is not a MAME release and is not supported by MAMEdev:
 please report problems on this fork, not to MAME. MAME is a registered trademark of Gregory Ember.
 
 Branch `atari-0.289` is MAME 0.289 plus the commits listed by `git log mame0289..atari-0.289`; each
@@ -126,6 +126,30 @@ mode. With Warm, every colour matches the Pocket core's own screenshots of a col
   64K/128K and others), and the checksum is checked. `.car` files load without stripping the
   header.
 
+## Mattel Intellivision (`intv`, `intv2`, `intvoice`, `intvecs`, ...)
+
+Corrections found while writing a clean-room Intellivision core for the Analogue Pocket, from GI's
+CP-1600/CP1610 manuals, the Intellivision wiki and recordings of a real console:
+
+- **The STIC takes the bus from the CPU.** MAME took its stolen cycles off the CPU from a timer,
+  where that did nothing: the CPU had the whole frame. Now the STIC asserts the CP1610's BUSRQ, the
+  CPU stops at the end of its next interruptible instruction until it goes (and two cycles more),
+  and with the display on it takes about 1,460 cycles of a frame's 14,934 (1,350 with a vertical
+  delay). A row of cards is copied when the CPU stops for it; bus copy starts when the CPU takes the
+  VBlank interrupt. Games that time themselves against the display (Sewer Sam, TRON Solar Sailer)
+  drifted against it.
+- **A frame is 14,934 CPU cycles** (262 lines of 57), not 14,934.68.
+- **Interrupts are taken after the first interruptible instruction that ends after the request**;
+  they were one instruction late.
+- **CP1610 cycles:** SETC takes 4 cycles (it was 6), SARC Rr,2 takes 8 (6). HLT halts the CPU
+  after the next interruptible instruction; it did nothing.
+- **ECS:** all 16 ROM pages, so IntyBASIC's ECS start-up can page the ECS ROMs out; its second sound
+  chip is an AY-3-8917 (no second envelope/volume control bit).
+- **Intellivoice:** the SP0256 speaks at 10 kHz (it was 9,285 Hz, 7.7 % too low and too slow), as
+  upstream MAME does after 0.289.
+
+The exact number of stolen cycles is still to be measured on a console.
+
 ## Core and debugging
 
 - **`-debugger script`**: a windowless debugger whose stops hold while Lua runs, so scripts can use
@@ -139,8 +163,8 @@ mode. With Warm, every colour matches the Pocket core's own screenshots of a col
 
 ## Downloads
 
-Atari-only builds (a2600, a7800, the Atari 8-bit computers and the 5200) are on the fork's
-Releases page, built by `.github/workflows/atari-release.yml`:
+Atari-only builds (a2600, a7800, the Atari 8-bit computers and the 5200, and the Intellivision) are
+on the fork's Releases page, built by `.github/workflows/atari-release.yml`:
 
 - **Windows x64**: unzip and run `mame.exe` from that folder. Windows may warn that it is
   unsigned: More info, Run anyway.
@@ -150,13 +174,14 @@ Releases page, built by `.github/workflows/atari-release.yml`:
 - **Linux x86-64**: one AppImage carrying its libraries (glibc 2.34 or later). `chmod +x` it and
   run it; without FUSE, add `--appimage-extract-and-run`.
 
-BIOS images are not included; the 7800 does not need one (it starts straight in the cartridge).
+BIOS images are not included; the 7800 does not need one (it starts straight in the cartridge). The
+Intellivision needs its EXEC and GROM (`exec.bin`, `ro-3-9503-003.u21`).
 
 ## Building
 
     git clone --branch atari-0.289 https://github.com/Miasmark/mame-Atari8bit7800
     cd mame-Atari8bit7800
-    make -j$(nproc) SOURCES=src/mame/atari/a7800.cpp,src/mame/atari/atari400.cpp,src/mame/atari/a2600.cpp
+    make -j$(nproc) SOURCES=src/mame/atari/a7800.cpp,src/mame/atari/atari400.cpp,src/mame/atari/a2600.cpp,src/mame/mattel/intv.cpp
 
 Drop `SOURCES=...` for a full MAME. On Windows, use an MSYS2 MinGW64 shell, as MAME's "Compiling MAME"
 documentation describes.
