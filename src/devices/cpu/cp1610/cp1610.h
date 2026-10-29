@@ -16,6 +16,8 @@
 
 #define CP1610_INT_INTRM    1                   /* Maskable */
 #define CP1610_INT_INTR     INPUT_LINE_NMI      /* Non-Maskable */
+#define CP1610_BUSRQ        2                   /* Bus request */
+#define CP1610_STPST        3                   /* Stop/start: each falling edge halts or restarts */
 
 class cp1610_cpu_device :  public cpu_device
 {
@@ -33,6 +35,7 @@ public:
 	auto bext() { return m_read_bext.bind(); }
 	auto iab() { return m_read_iab.bind(); }
 	auto intak() { return m_write_intak.bind(); }
+	auto busak() { return m_write_busak.bind(); }   // ASSERT_LINE while the bus is lent
 
 protected:
 	// device-level overrides
@@ -42,7 +45,7 @@ protected:
 	// device_execute_interface overrides
 	virtual uint32_t execute_min_cycles() const noexcept override { return 1; }
 	virtual uint32_t execute_max_cycles() const noexcept override { return 7; }
-	virtual bool execute_input_edge_triggered(int inputnum) const noexcept override { return inputnum == CP1610_INT_INTR; }
+	virtual bool execute_input_edge_triggered(int inputnum) const noexcept override { return inputnum == CP1610_INT_INTR || inputnum == CP1610_STPST; }
 	virtual void execute_run() override;
 	virtual void execute_set_input(int inputnum, int state) override;
 
@@ -67,12 +70,17 @@ private:
 	bool    m_intr_pending;
 	bool    m_intrm_pending;
 	bool    m_mask_interrupts;
+	int     m_busrq_state;
+	bool    m_busak;            // the bus is lent: the CPU waits for BUSRQ to go
+	u8      m_halt_count;       // interruptible instructions still to end before a halt
+	bool    m_halted;
 	address_space *m_program;
 	int m_icount;
 
 	devcb_read8 m_read_bext;
 	devcb_read16 m_read_iab;
 	devcb_write16 m_write_intak;
+	devcb_write_line m_write_busak;
 
 	void cp1610_illegal();
 	void cp1610_hlt();
@@ -197,6 +205,7 @@ private:
 	void cp1610_jd(uint16_t addr);
 	void cp1610_do_sdbd();
 	void cp1610_do_jumps();
+	bool take_requests();
 };
 
 
