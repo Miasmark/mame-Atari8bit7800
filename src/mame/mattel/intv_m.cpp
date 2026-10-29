@@ -577,6 +577,9 @@ void intv_state::machine_start()
 {
 	save_item(NAME(m_bus_copy_mode));
 	save_item(NAME(m_backtab_row));
+	save_item(NAME(m_stic_row));
+	save_item(NAME(m_row_delay));
+	save_item(NAME(m_fifo));
 	save_item(NAME(m_ram16));
 	save_item(NAME(m_sr1_int_pending));
 	save_item(NAME(m_ram8));
@@ -635,51 +638,85 @@ void intv_state::machine_start()
 
 	m_int2_complete_timer = timer_alloc(FUNC(intv_state::interrupt2_complete), this);
 	m_int_complete_timer = timer_alloc(FUNC(intv_state::interrupt_complete), this);
-	for (int row = 0; row < stic_device::BACKTAB_HEIGHT; row++)
-		m_btb_fill_timers[row] = timer_alloc(FUNC(intv_state::btb_fill), this);
+	m_row_fetch_timer = timer_alloc(FUNC(intv_state::row_fetch), this);
+	m_busrq_end_timer = timer_alloc(FUNC(intv_state::busrq_end), this);
 }
 
+
+/*
+    The STIC takes the bus from the CPU with BUSRQ, which the CPU grants (BUSAK) at the end of its next
+    interruptible instruction and holds until BUSRQ goes. With the display on, it does so once at the
+    end of VBlank, for FRAME_BUSRQ cycles, then for ROW_BUSRQ cycles to fetch each row of cards, one
+    every 16 scanlines while the frame lasts: 12 rows, and a 13th with no vertical delay. At BUSAK the
+    System RAM leaves bus copy and loads its FIFO with the next row of BACKTAB, which the STIC then
+    takes; a request the CPU does not grant in time leaves the FIFO as it was, and the STIC shows its
+    row again. Bus copy starts, and the FIFO's address counter goes back to the top of BACKTAB, at the
+    CPU's INTAK.
+*/
 
 TIMER_CALLBACK_MEMBER(intv_state::interrupt_complete)
 {
 	m_maincpu->set_input_line(CP1610_INT_INTRM, CLEAR_LINE);
-	m_bus_copy_mode = 0;
+
+	// the display is on if it was enabled during this VBlank
+	if (m_stic->read_stic_handshake())
+	{
+		m_stic_row = -1;
+		bus_request(stic_device::FRAME_BUSRQ);
+		m_row_delay = m_stic->read_row_delay();
+		m_row_fetch_timer->adjust(m_maincpu->cycles_to_attotime(stic_device::FIRST_FETCH - stic_device::VBLANK_END + stic_device::CYCLES_PER_SCANLINE * stic_device::Y_SCALE * m_row_delay));
+	}
 }
 
-TIMER_CALLBACK_MEMBER(intv_state::btb_fill)
+TIMER_CALLBACK_MEMBER(intv_state::row_fetch)
 {
-	uint8_t row = m_backtab_row;
-	//m_maincpu->adjust_icount(-STIC_ROW_FETCH);
+	constexpr int ROW_CYCLES = stic_device::CYCLES_PER_SCANLINE * stic_device::Y_SCALE * stic_device::CARD_HEIGHT;
 
-	for (int column = 0; column < stic_device::BACKTAB_WIDTH; column++)
-		m_stic->write_to_btb(row, column,  m_ram16[column + row * stic_device::BACKTAB_WIDTH]);
+	m_stic_row = param;
+	bus_request(stic_device::ROW_BUSRQ);
+	if (stic_device::FIRST_FETCH + stic_device::CYCLES_PER_SCANLINE * stic_device::Y_SCALE * m_row_delay + ROW_CYCLES * (param + 1) < stic_device::FRAME_CYCLES)
+		m_row_fetch_timer->adjust(m_maincpu->cycles_to_attotime(ROW_CYCLES), param + 1);
+}
 
-	m_backtab_row += 1;
+void intv_state::bus_request(int cycles)
+{
+	m_maincpu->set_input_line(CP1610_BUSRQ, ASSERT_LINE);
+	m_busrq_end_timer->adjust(m_maincpu->cycles_to_attotime(cycles));
+}
+
+TIMER_CALLBACK_MEMBER(intv_state::busrq_end)
+{
+	m_maincpu->set_input_line(CP1610_BUSRQ, CLEAR_LINE);
+	if (m_stic_row >= 0 && m_stic_row < stic_device::BACKTAB_HEIGHT)
+		for (int column = 0; column < stic_device::BACKTAB_WIDTH; column++)
+			m_stic->write_to_btb(m_stic_row, column, m_fifo[column]);
+}
+
+void intv_state::busak_w(int state)
+{
+	if (state != ASSERT_LINE)
+		return;
+
+	m_bus_copy_mode = 0;
+	if (m_stic_row >= 0)
+	{
+		for (int column = 0; column < stic_device::BACKTAB_WIDTH; column++)
+			m_fifo[column] = m_ram16[(m_backtab_row * stic_device::BACKTAB_WIDTH + column) % std::size(m_ram16)];
+		m_backtab_row++;
+	}
+}
+
+void intv_state::intak_w(uint16_t data)
+{
+	m_bus_copy_mode = 1;
+	m_backtab_row = 0;
 }
 
 INTERRUPT_GEN_MEMBER(intv_state::interrupt)
 {
-	int delay = m_stic->read_row_delay();
 	m_maincpu->set_input_line(CP1610_INT_INTRM, ASSERT_LINE);
 	m_sr1_int_pending = 1;
-	m_bus_copy_mode = 1;
-	m_backtab_row = 0;
-
-	m_maincpu->adjust_icount(-(12*stic_device::ROW_BUSRQ+stic_device::FRAME_BUSRQ)); // Account for stic cycle stealing
 	m_int_complete_timer->adjust(m_maincpu->cycles_to_attotime(stic_device::VBLANK_END));
-	for (int row = 0; row < stic_device::BACKTAB_HEIGHT; row++)
-	{
-		const uint32_t row_cycles = (stic_device::CYCLES_PER_SCANLINE * stic_device::Y_SCALE * stic_device::CARD_HEIGHT - stic_device::ROW_BUSRQ) * row;
-		const uint32_t total_cycles = stic_device::FIRST_FETCH - stic_device::FRAME_BUSRQ + stic_device::CYCLES_PER_SCANLINE * stic_device::Y_SCALE * delay + row_cycles;
-		attotime duration = m_maincpu->cycles_to_attotime(total_cycles);
-		m_btb_fill_timers[row]->adjust(duration);
-	}
-
-	if (delay == 0)
-	{
-		m_maincpu->adjust_icount(-stic_device::ROW_BUSRQ); // extra row fetch occurs if vertical delay == 0
-	}
-
 	m_stic->screenrefresh();
 }
 

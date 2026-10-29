@@ -68,7 +68,8 @@ private:
 
 	emu_timer *m_int_complete_timer;
 	emu_timer *m_int2_complete_timer;
-	emu_timer *m_btb_fill_timers[stic_device::BACKTAB_HEIGHT];
+	emu_timer *m_row_fetch_timer;
+	emu_timer *m_busrq_end_timer;
 
 	required_device<cpu_device> m_maincpu;
 	required_device<ay8914_device> m_sound;
@@ -89,7 +90,10 @@ private:
 	uint8_t intvkb_iocart_r(offs_t offset);
 
 	uint8_t m_bus_copy_mode = 0;
-	uint8_t m_backtab_row = 0;
+	uint8_t m_backtab_row = 0;      // the System RAM's FIFO address counter, in rows
+	int m_stic_row = 0;             // what the STIC's bus request is for: -1 the end of VBlank, else a row
+	int m_row_delay = 0;
+	uint16_t m_fifo[stic_device::BACKTAB_WIDTH]{};
 	uint16_t m_ram16[0x160]{};
 	int m_sr1_int_pending = 0;
 	uint8_t m_ram8[256]{};
@@ -107,6 +111,9 @@ private:
 	void intvkbd_periph_w(offs_t offset, uint8_t data);
 
 	uint16_t iab_r();
+	void intak_w(uint16_t data);
+	void busak_w(int state);
+	void bus_request(int cycles);
 
 	bool m_printer_not_busy = false;        // printer state
 	bool m_printer_no_paper = false;        // printer state
@@ -125,7 +132,8 @@ private:
 	INTERRUPT_GEN_MEMBER(interrupt);
 	TIMER_CALLBACK_MEMBER(interrupt2_complete);
 	TIMER_CALLBACK_MEMBER(interrupt_complete);
-	TIMER_CALLBACK_MEMBER(btb_fill);
+	TIMER_CALLBACK_MEMBER(row_fetch);
+	TIMER_CALLBACK_MEMBER(busrq_end);
 
 	void intv2_mem(address_map &map) ATTR_COLD;
 	void intv_mem(address_map &map) ATTR_COLD;
