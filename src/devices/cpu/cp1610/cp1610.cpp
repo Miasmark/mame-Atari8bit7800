@@ -94,7 +94,8 @@ void cp1610_cpu_device::cp1610_illegal()
  ***************************************************/
 void cp1610_cpu_device::cp1610_hlt()
 {
-	/* TBD */
+	// the CPU stops once the next interruptible instruction has ended, until STPST restarts it
+	m_halt_count = 2;
 	m_icount -= 4;
 }
 
@@ -2119,6 +2120,13 @@ void cp1610_cpu_device::execute_run()
 
 	do
 	{
+		// requests are taken between instructions, after one that is interruptible
+		if (!m_mask_interrupts && take_requests())
+		{
+			m_icount = 0;
+			break;
+		}
+
 		debugger_instruction_hook(m_r[7]);
 
 		m_mask_interrupts = false;
@@ -2139,7 +2147,7 @@ void cp1610_cpu_device::execute_run()
 		switch( opcode )
 		{
 		/* opcode  bitmask */
-		case 0x000: /* 0 000 000 000 */ cp1610_hlt(); break; /* TBD */
+		case 0x000: /* 0 000 000 000 */ cp1610_hlt(); break;
 		case 0x001: /* 0 000 000 001 */ cp1610_do_sdbd(); break;
 		case 0x002: /* 0 000 000 010 */ cp1610_eis(); break; /* TBD */
 		case 0x003: /* 0 000 000 011 */ cp1610_dis(); break; /* TBD */
@@ -3292,38 +3300,66 @@ void cp1610_cpu_device::execute_run()
 		case 0x3ff: /* 1 111 111 111 */ cp1610_xori(7); break;
 		}
 
-		if (!m_mask_interrupts)
-		{
-			if (m_reset_pending)
-			{
-				m_reset_pending = false;
-				m_r[7] = m_read_iab();
-			}
-			else if (m_intr_pending)
-			{
-				/* PSHR R7 */
-				standard_irq_callback(CP1610_INT_INTR, m_r[7]);
-				m_write_intak(m_r[6]);
-				cp1610_writemem16(m_r[6],m_r[7]);
-				m_r[6]++;
-				m_icount -= 9;
-				m_intr_pending = false;
-				m_r[7] = m_read_iab();
-			}
-			else if (m_intrm_pending && m_intr_enabled)
-			{
-				/* PSHR R7 */
-				standard_irq_callback(CP1610_INT_INTRM, m_r[7]);
-				m_write_intak(m_r[6]);
-				cp1610_writemem16(m_r[6],m_r[7]);
-				m_r[6]++;
-				m_icount -= 9;
-				m_intrm_pending = false;
-				m_r[7] = m_read_iab();
-			}
-		}
-
 	} while( m_icount > 0 );
+}
+
+
+//-------------------------------------------------
+//  take_requests - at the end of an interruptible
+//  instruction: lend the bus, halt or take an
+//  interrupt; true while the CPU is to wait
+//-------------------------------------------------
+
+bool cp1610_cpu_device::take_requests()
+{
+	// BUSRQ is sampled whether or not interrupts are enabled; once it goes, two NACT cycles pass
+	// before the next fetch, BUSAK rising in the third
+	if (m_busak)
+	{
+		if (m_busrq_state != CLEAR_LINE)
+			return true;
+		m_busak = false;
+		m_icount -= 2;
+		m_write_busak(CLEAR_LINE);
+	}
+	else if (m_busrq_state != CLEAR_LINE)
+	{
+		m_busak = true;
+		m_write_busak(ASSERT_LINE);
+		return true;
+	}
+
+	if (m_halted)
+		return true;
+	if (m_halt_count && !--m_halt_count)
+	{
+		m_halted = true;
+		return true;
+	}
+
+	if (m_intr_pending)
+	{
+		/* PSHR R7 */
+		standard_irq_callback(CP1610_INT_INTR, m_r[7]);
+		m_write_intak(m_r[6]);
+		cp1610_writemem16(m_r[6],m_r[7]);
+		m_r[6]++;
+		m_icount -= 9;
+		m_intr_pending = false;
+		m_r[7] = m_read_iab();
+	}
+	else if (m_intrm_pending && m_intr_enabled)
+	{
+		/* PSHR R7 */
+		standard_irq_callback(CP1610_INT_INTRM, m_r[7]);
+		m_write_intak(m_r[6]);
+		cp1610_writemem16(m_r[6],m_r[7]);
+		m_r[6]++;
+		m_icount -= 9;
+		m_intrm_pending = false;
+		m_r[7] = m_read_iab();
+	}
+	return false;
 }
 
 
@@ -3333,6 +3369,10 @@ void cp1610_cpu_device::device_start()
 	m_reset_pending = false;
 	m_intr_pending = false;
 	m_intrm_pending = false;
+	m_mask_interrupts = false;
+	m_busak = false;
+	m_halt_count = 0;
+	m_halted = false;
 	m_flags = 0;
 	std::fill(std::begin(m_r), std::end(m_r), 0x0000);
 
@@ -3347,6 +3387,10 @@ void cp1610_cpu_device::device_start()
 	save_item(NAME(m_intr_pending));
 	save_item(NAME(m_intrm_pending));
 	save_item(NAME(m_mask_interrupts));
+	save_item(NAME(m_busrq_state));
+	save_item(NAME(m_busak));
+	save_item(NAME(m_halt_count));
+	save_item(NAME(m_halted));
 
 	// Register state for debugger
 	state_add( CP1610_R0, "R0", m_r[0] ).formatstr("%04X");
@@ -3368,6 +3412,10 @@ void cp1610_cpu_device::device_reset()
 {
 	/* This is how we set the reset vector */
 	m_reset_pending = true;
+	m_mask_interrupts = false;
+	m_busak = false;
+	m_halt_count = 0;
+	m_halted = false;
 }
 
 void cp1610_cpu_device::execute_set_input(int irqline, int state)
@@ -3383,6 +3431,18 @@ void cp1610_cpu_device::execute_set_input(int irqline, int state)
 				m_intr_pending = true;
 			m_intr_state = state;
 			break;
+		case CP1610_BUSRQ:
+			m_busrq_state = state;
+			break;
+		case CP1610_STPST:
+			if (state == ASSERT_LINE)
+			{
+				if (m_halted)
+					m_halted = false;
+				else
+					m_halt_count = 1;
+			}
+			break;
 	}
 }
 
@@ -3392,9 +3452,11 @@ cp1610_cpu_device::cp1610_cpu_device(const machine_config &mconfig, const char *
 	, m_program_config("program", ENDIANNESS_BIG, 16, 16, -1)
 	, m_intr_state(0)
 	, m_intrm_state(0)
+	, m_busrq_state(CLEAR_LINE)
 	, m_read_bext(*this, 0)
 	, m_read_iab(*this, 0)
 	, m_write_intak(*this)
+	, m_write_busak(*this)
 {
 }
 
