@@ -1,6 +1,6 @@
 name: Atari release builds
 
-# Atari-only builds (a2600, a7800 and the Atari 8-bit/5200 drivers) for
+# Atari-only builds (a2600, a7800, the Atari 8-bit/5200 drivers and the Intellivision) for
 # Windows x64, macOS (Apple silicon) and Linux x64 (AppImage). A tag named
 # atari-* makes a draft release with them; a push to the branch, or running
 # the workflow by hand, only keeps them as workflow artifacts.
@@ -18,7 +18,7 @@ permissions:
   contents: write
 
 env:
-  SOURCES: src/mame/atari/a7800.cpp,src/mame/atari/atari400.cpp,src/mame/atari/a2600.cpp
+  SOURCES: src/mame/atari/a7800.cpp,src/mame/atari/atari400.cpp,src/mame/atari/a2600.cpp,src/mame/mattel/intv.cpp
   TOOLS: 0
   STRIP_SYMBOLS: 1
 
@@ -168,6 +168,6 @@ jobs:
         - macOS (Apple silicon): unzip, then the first time right-click mame and choose Open, or run xattr -dr com.apple.quarantine on the folder; the build is not signed by a developer.
         - Linux x64: one AppImage that carries its libraries (README, licence and software lists inside); chmod +x it. Without FUSE, run it with --appimage-extract-and-run.
 
-        BIOS images are not included. The 7800 does not need one: it starts straight in the cartridge.
+        BIOS images are not included. The 7800 does not need one: it starts straight in the cartridge. The Intellivision needs its EXEC and GROM.
         EOF
         gh release create "${GITHUB_REF_NAME}" dist/* --draft --title "${GITHUB_REF_NAME}" --notes-file notes.md
