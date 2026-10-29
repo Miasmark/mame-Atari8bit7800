@@ -150,7 +150,7 @@ void cp1610_cpu_device::cp1610_setc()
 {
 	m_mask_interrupts = true;
 	m_flags |= C;
-	m_icount -= 6;
+	m_icount -= 4;
 }
 
 /***************************************************
@@ -564,7 +564,7 @@ void cp1610_cpu_device::cp1610_sarc_2(int r)
 	m_flags &= ~S;
 	if (m_r[r] & 0x80)
 		m_flags |= S;
-	m_icount -= 6;
+	m_icount -= 8;
 }
 
 /***************************************************
