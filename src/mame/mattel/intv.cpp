@@ -446,6 +446,8 @@ void intv_state::intv(machine_config &config)
 	maincpu.set_addrmap(AS_PROGRAM, &intv_state::intv_mem);
 	maincpu.set_vblank_int("screen", FUNC(intv_state::interrupt));
 	maincpu.iab().set(FUNC(intv_state::iab_r));
+	maincpu.intak().set(FUNC(intv_state::intak_w));
+	maincpu.busak().set(FUNC(intv_state::busak_w));
 	config.set_maximum_quantum(attotime::from_hz(60));
 
 	/* video hardware */
@@ -453,7 +455,7 @@ void intv_state::intv(machine_config &config)
 	m_stic->set_screen("screen");
 
 	screen_device &screen(SCREEN(config, "screen"));
-	screen.set_refresh_hz(59.92);
+	screen.set_refresh(attotime::from_ticks(stic_device::FRAME_CYCLES, (XTAL(3'579'545)/4).value())); // 262 lines of 57 CPU cycles
 	//screen.set_vblank_time(ATTOSECONDS_IN_USEC(2400)); /* not accurate */
 	screen.set_screen_update(FUNC(intv_state::screen_update_intv));
 	screen.set_size(stic_device::SCREEN_WIDTH*INTV_X_SCALE, stic_device::SCREEN_HEIGHT*INTV_Y_SCALE);
