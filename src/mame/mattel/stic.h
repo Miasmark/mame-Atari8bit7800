@@ -43,10 +43,11 @@ public:
 	static constexpr unsigned   OVERSCAN_TOP_HEIGHT     = 12;
 	static constexpr unsigned   OVERSCAN_BOTTOM_HEIGHT  = 12;
 
-	//Timing constants based on  Joe Zbiciak's documentation
+	//Timing constants based on  Joe Zbiciak's documentation, in CPU cycles from the VBlank interrupt
 	static constexpr int        CYCLES_PER_SCANLINE     = 57;
-	static constexpr int        ROW_BUSRQ               = 110; // CPU paused during backtab row buffering
-	static constexpr int        FRAME_BUSRQ             = 42; // CPU paused just after end of vblank and before first row fetch (approximate)
+	static constexpr int        FRAME_CYCLES            = CYCLES_PER_SCANLINE * 262;
+	static constexpr int        ROW_BUSRQ               = 110; // BUSRQ held for each backtab row fetch
+	static constexpr int        FRAME_BUSRQ             = 42; // BUSRQ held just after end of vblank and before first row fetch (approximate)
 	static constexpr int        VBLANK_END              = 3790;
 	static constexpr int        FIRST_FETCH             = 3933;
 

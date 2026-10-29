@@ -30,7 +30,7 @@ public:
 	// RAM
 	virtual uint16_t read_ram(offs_t offset) override { return (int)m_ram[offset & (m_ram.size() - 1)]; }
 	virtual void write_ram(offs_t offset, uint16_t data) override { m_ram[offset & (m_ram.size() - 1)] = data & 0xff; }
-	// AY8914
+	// AY8917
 	virtual uint16_t read_ay(offs_t offset) override;
 	virtual void write_ay(offs_t offset, uint16_t data) override;
 
@@ -69,8 +69,9 @@ protected:
 	virtual const tiny_rom_entry *device_rom_region() const override ATTR_COLD;
 
 private:
+	void select_page(int segment, offs_t offset, uint16_t data);
 
-	required_device<ay8914_device> m_snd;
+	required_device<ay8917_device> m_snd;
 	required_device<intv_cart_slot_device> m_subslot;
 
 	int m_bank_base[0x10];

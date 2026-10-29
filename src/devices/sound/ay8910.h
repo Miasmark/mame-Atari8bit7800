@@ -359,9 +359,21 @@ public:
 	// AY8914 handlers needed due to different register map
 	u8 read(offs_t offset);
 	void write(offs_t offset, u8 data);
+
+protected:
+	ay8914_device(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, u32 clock, int feature);
 };
 
 DECLARE_DEVICE_TYPE(AY8914, ay8914_device)
+
+// the AY-3-8914's register map, without its second envelope/volume control bit
+class ay8917_device : public ay8914_device
+{
+public:
+	ay8917_device(const machine_config &mconfig, const char *tag, device_t *owner, u32 clock);
+};
+
+DECLARE_DEVICE_TYPE(AY8917, ay8917_device)
 
 class ay8930_device : public ay8910_device
 {
