@@ -1636,7 +1636,20 @@ ay8913_device::ay8913_device(const machine_config &mconfig, const char *tag, dev
 DEFINE_DEVICE_TYPE(AY8914, ay8914_device, "ay8914", "AY-3-8914A PSG")
 
 ay8914_device::ay8914_device(const machine_config &mconfig, const char *tag, device_t *owner, u32 clock)
-	: ay8910_device(mconfig, AY8914, tag, owner, clock, PSG_TYPE_AY, 3, 2, PSG_EXTENDED_ENVELOPE)
+	: ay8914_device(mconfig, AY8914, tag, owner, clock, PSG_EXTENDED_ENVELOPE)
+{
+}
+
+ay8914_device::ay8914_device(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, u32 clock, int feature)
+	: ay8910_device(mconfig, type, tag, owner, clock, PSG_TYPE_AY, 3, 2, feature)
+{
+}
+
+
+DEFINE_DEVICE_TYPE(AY8917, ay8917_device, "ay8917", "AY-3-8917 PSG")
+
+ay8917_device::ay8917_device(const machine_config &mconfig, const char *tag, device_t *owner, u32 clock)
+	: ay8914_device(mconfig, AY8917, tag, owner, clock, PSG_DEFAULT)
 {
 }
 

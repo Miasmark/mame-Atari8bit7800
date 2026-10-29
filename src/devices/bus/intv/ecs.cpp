@@ -6,13 +6,9 @@
  Mattel Intellivision Entertainment Computer System expansion emulation
 
  TODO:
-   - Make paged rom emulation more accurate (according to
-   http://spatula-city.org/~im14u2c/intv/tech/ecs.html
-   writes to $xa5y should be available for every x and every y, i.e. we shall
-   have writes to every 4K chunk of the memory map, and there shall be 16 pages
-   for each)
-   Current emulation is instead tailored around the minimal usage necessary to
-   make the main expansion and World Series Major League Baseball happy
+   - Page writes are decoded only for the 4K blocks the ECS ROMs and World Series
+     Major League Baseball use ($2000, $7000, $E000, $F000), not for every block
+     (http://spatula-city.org/~im14u2c/intv/tech/ecs.html)
 
  ***********************************************************************************************************/
 
@@ -30,7 +26,7 @@ DEFINE_DEVICE_TYPE(INTV_ROM_ECS, intv_ecs_device, "intv_ecs", "Intellivision ECS
 
 intv_ecs_device::intv_ecs_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock) :
 	intv_rom_device(mconfig, INTV_ROM_ECS, tag, owner, clock),
-	m_snd(*this, "ay8914"),
+	m_snd(*this, "ay8917"),
 	m_subslot(*this, "subslot"),
 	m_voice_enabled(false),
 	m_ramd0_enabled(false),
@@ -98,7 +94,7 @@ void intv_ecs_device::device_add_mconfig(machine_config &config)
 {
 	SPEAKER(config, "mono_ecs").front_center();
 
-	AY8914(config, m_snd, XTAL(3'579'545)/2);
+	AY8917(config, m_snd, XTAL(3'579'545)/2);
 	m_snd->port_a_read_callback().set("ctrl_port", FUNC(intvecs_control_port_device::porta_r));
 	m_snd->port_b_read_callback().set("ctrl_port", FUNC(intvecs_control_port_device::portb_r));
 	m_snd->port_a_write_callback().set("ctrl_port", FUNC(intvecs_control_port_device::porta_w));
@@ -124,27 +120,34 @@ const tiny_rom_entry *intv_ecs_device::device_rom_region() const
 
 /*-------------------------------------------------
  Paged ROM handling
+
+ A write of $xA5y to $xFFF selects page y of the 4K
+ at $x000. The ECS ROMs answer on their own pages
+ ($2000 and $E000 on 1, $7000 on 0) and the
+ cartridge, which ignores the pages, on the others;
+ World Series Major League Baseball has two pages
+ at $F000.
  -------------------------------------------------*/
 
 uint16_t intv_ecs_device::read_rom20(offs_t offset)
 {
-	if (m_bank_base[2])
+	if (m_bank_base[2] == 1)
 		return INTV_ROM16_READ(offset + 0x2000);
 	else
-		return 0xffff;
+		return m_subslot->read_rom20(offset);
 }
 
 uint16_t intv_ecs_device::read_rom70(offs_t offset)
 {
-	if (m_bank_base[7])
-		return 0xffff;
-	else
+	if (m_bank_base[7] == 0)
 		return INTV_ROM16_READ(offset + 0x7000);
+	else
+		return m_subslot->read_rom70(offset);
 }
 
 uint16_t intv_ecs_device::read_rome0(offs_t offset)
 {
-	if (m_bank_base[14])
+	if (m_bank_base[14] == 1)
 		return INTV_ROM16_READ(offset + 0xe000);
 	else    // if WSMLB is loaded, it shall go here, otherwise 0xffff
 		return m_subslot->read_rome0(offset);
@@ -152,11 +155,17 @@ uint16_t intv_ecs_device::read_rome0(offs_t offset)
 
 uint16_t intv_ecs_device::read_romf0(offs_t offset)
 {
-	// only WSMLB should come here with bank_base = 1
-	if (m_bank_base[15])
+	// only WSMLB has a page 1 here
+	if (m_bank_base[15] == 1)
 		return m_subslot->read_romf0(offset + 0x1000);
 	else
 		return m_subslot->read_romf0(offset);
+}
+
+void intv_ecs_device::select_page(int segment, offs_t offset, uint16_t data)
+{
+	if (offset == 0xfff && (data & 0xfff0) == ((segment << 12) | 0x0a50))
+		m_bank_base[segment] = data & 0x000f;
 }
 
 
@@ -199,44 +208,20 @@ uint16_t intv_ecs_device::read_romd0(offs_t offset)
 
 void intv_ecs_device::write_rom20(offs_t offset, uint16_t data)
 {
-	if (offset == 0xfff)
-	{
-		if (data == 0x2a50)
-			m_bank_base[2] = 0;
-		else if (data == 0x2a51)
-			m_bank_base[2] = 1;
-	}
+	select_page(0x2, offset, data);
 }
 
 void intv_ecs_device::write_rom70(offs_t offset, uint16_t data)
 {
-	if (offset == 0xfff)
-	{
-		if (data == 0x7a50)
-			m_bank_base[7] = 0;
-		else if (data == 0x7a51)
-			m_bank_base[7] = 1;
-	}
+	select_page(0x7, offset, data);
 }
 
 void intv_ecs_device::write_rome0(offs_t offset, uint16_t data)
 {
-	if (offset == 0xfff)
-	{
-		if (data == 0xea50)
-			m_bank_base[14] = 0;
-		else if (data == 0xea51)
-			m_bank_base[14] = 1;
-	}
+	select_page(0xe, offset, data);
 }
 
 void intv_ecs_device::write_romf0(offs_t offset, uint16_t data)
 {
-	if (offset == 0xfff)
-	{
-		if (data == 0xfa50)
-			m_bank_base[15] = 0;
-		else if (data == 0xfa51)
-			m_bank_base[15] = 1;
-	}
+	select_page(0xf, offset, data);
 }
