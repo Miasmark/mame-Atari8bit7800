@@ -70,6 +70,9 @@ enum
 };
 
 
+class a78_cart_slot_device;
+
+
 // ======================> device_a78_cart_interface
 
 class device_a78_cart_interface : public device_interface
@@ -91,7 +94,10 @@ public:
 	virtual void write_40xx(offs_t offset, uint8_t data) {}
 
 	// true while MARIA is the one reading (bankset carts show MARIA the other half of the ROM)
-	void set_dma_active(bool active) { m_dmaactive = active; }
+	virtual void set_dma_active(bool active) { m_dmaactive = active; }
+
+	// a pass-through board's slot for the game plugged into it (the High Score Cart's)
+	virtual a78_cart_slot_device *game_slot() { return nullptr; }
 
 	void rom_alloc(uint32_t size);
 	void ram_alloc(uint32_t size);
@@ -155,6 +161,9 @@ public:
 	bool wants_savekey() const { return m_savekey; }  // the header asks for a SaveKey or AtariVox in port 2
 	bool has_cart() { return m_cart != nullptr; }
 	void set_dma_active(bool active) { if (m_cart) m_cart->set_dma_active(active); }
+
+	// the slot holding the game: this one, or the High Score Cart's when the game is plugged into it
+	a78_cart_slot_device &game_slot();
 
 	// reading and writing
 	uint8_t read_04xx(offs_t offset);
