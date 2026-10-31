@@ -361,7 +361,7 @@ void intv_state::intvecs_mem(address_map &map)
 {
 	map(0x0000, 0x003f).rw(FUNC(intv_state::stic_r), FUNC(intv_state::stic_w));
 	map(0x0080, 0x0081).rw("speech", FUNC(sp0256_device::spb640_r), FUNC(sp0256_device::spb640_w)); /* Intellivoice */
-	// map(0x00e0, 0x00e3).rw(FUNC(intv_state::intv_ecs_uart_r), FUNC(intv_state::intv_ecs_uart_w));
+	map(0x00e0, 0x00e3).r("ecs", FUNC(intv_ecs_device::read_uart)).nopw(); /* cassette and printer UART */
 	map(0x00f0, 0x00ff).rw("ecs", FUNC(intv_ecs_device::read_ay), FUNC(intv_ecs_device::write_ay)); /* ecs psg */
 	map(0x0100, 0x01ef).rw(FUNC(intv_state::ram8_r), FUNC(intv_state::ram8_w));
 	map(0x01f0, 0x01ff).rw(m_sound, FUNC(ay8914_device::read), FUNC(ay8914_device::write)).umask16(0x00ff);

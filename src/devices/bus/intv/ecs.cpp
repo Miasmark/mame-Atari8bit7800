@@ -98,6 +98,7 @@ void intv_ecs_device::device_add_mconfig(machine_config &config)
 	m_snd->port_a_read_callback().set("ctrl_port", FUNC(intvecs_control_port_device::porta_r));
 	m_snd->port_b_read_callback().set("ctrl_port", FUNC(intvecs_control_port_device::portb_r));
 	m_snd->port_a_write_callback().set("ctrl_port", FUNC(intvecs_control_port_device::porta_w));
+	m_snd->port_b_write_callback().set("ctrl_port", FUNC(intvecs_control_port_device::portb_w));
 	m_snd->add_route(ALL_OUTPUTS, "mono_ecs", 0.33);
 
 	INTVECS_CONTROL_PORT(config, "ctrl_port", intvecs_control_port_devices, "keybd");
@@ -166,6 +167,19 @@ void intv_ecs_device::select_page(int segment, offs_t offset, uint16_t data)
 {
 	if (offset == 0xfff && (data & 0xfff0) == ((segment << 12) | 0x0a50))
 		m_bank_base[segment] = data & 0x000f;
+}
+
+
+/*-------------------------------------------------
+ read_uart - the cassette and printer UART, $E0-$E3:
+ its status ($E0) says the transmitter is ready,
+ as a real ECS with no tape or printer does, so a
+ tape save runs to its end; what is sent is lost
+ -------------------------------------------------*/
+
+uint16_t intv_ecs_device::read_uart(offs_t offset)
+{
+	return (offset == 0) ? 0x0002 : 0x0000;
 }
 
 
