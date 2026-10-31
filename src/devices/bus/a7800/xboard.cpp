@@ -10,7 +10,9 @@
  (using the same ROM as Atari HighScore cart)
 
 
- Currently, we emulate both of these as a passthru cart, even if not 100% accurate for the XBoarD
+ Currently, we emulate both of these as a passthru cart, even if not 100% accurate for the XBoarD.
+ The game plugged into it sees everything they don't decode themselves, MARIA's reads marked as
+ hers (for bankset games); the XM's High Score RAM and ROM are the CPU's only.
 
 
  Memory map:
@@ -162,7 +164,7 @@ uint8_t a78_xboard_device::read_04xx(offs_t offset)
 	else if (BIT(m_reg, 4) && offset >= 0x60 && offset < 0x70)
 		return m_xbslot->read_04xx(offset - 0x10);   // access second POKEY
 	else
-		return 0xff;
+		return m_xbslot->read_04xx(offset);          // the game's own (a POKEY at $450 while ours is off)
 }
 
 void a78_xboard_device::write_04xx(offs_t offset, uint8_t data)
@@ -176,6 +178,29 @@ void a78_xboard_device::write_04xx(offs_t offset, uint8_t data)
 		m_reg = data;
 		m_ram_bank = m_reg & 7;
 	}
+	else
+		m_xbslot->write_04xx(offset, data);
+}
+
+uint8_t a78_xboard_device::read_08xx(offs_t offset)
+{
+	return m_xbslot->read_08xx(offset);
+}
+
+void a78_xboard_device::write_08xx(offs_t offset, uint8_t data)
+{
+	m_xbslot->write_08xx(offset, data);
+}
+
+uint8_t a78_xboard_device::read_30xx(offs_t offset)
+{
+	return m_xbslot->read_30xx(offset);
+}
+
+void a78_xboard_device::set_dma_active(bool active)
+{
+	m_dmaactive = active;
+	m_xbslot->set_dma_active(active);
 }
 
 
@@ -187,7 +212,7 @@ void a78_xboard_device::write_04xx(offs_t offset, uint8_t data)
 
 uint8_t a78_xm_device::read_10xx(offs_t offset)
 {
-	return m_nvram[offset];
+	return m_dmaactive ? m_xbslot->read_10xx(offset) : m_nvram[offset];
 }
 
 void a78_xm_device::write_10xx(offs_t offset, uint8_t data)
@@ -197,7 +222,7 @@ void a78_xm_device::write_10xx(offs_t offset, uint8_t data)
 
 uint8_t a78_xm_device::read_30xx(offs_t offset)
 {
-	return m_rom[offset];
+	return m_dmaactive ? m_xbslot->read_30xx(offset) : m_rom[offset];
 }
 
 uint8_t a78_xm_device::read_04xx(offs_t offset)
@@ -209,7 +234,7 @@ uint8_t a78_xm_device::read_04xx(offs_t offset)
 	else if (BIT(m_reg, 4) && offset >= 0x60 && offset < 0x70)
 		return m_xbslot->read_04xx(offset - 0x10);   // access second POKEY
 	else
-		return 0xff;
+		return m_xbslot->read_04xx(offset);          // the game's own (a POKEY at $450 while ours is off)
 }
 
 void a78_xm_device::write_04xx(offs_t offset, uint8_t data)
@@ -228,4 +253,6 @@ void a78_xm_device::write_04xx(offs_t offset, uint8_t data)
 		m_reg = data;
 		m_ram_bank = m_reg & 7;
 	}
+	else
+		m_xbslot->write_04xx(offset, data);
 }

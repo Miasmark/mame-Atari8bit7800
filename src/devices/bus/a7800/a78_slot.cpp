@@ -417,7 +417,15 @@ int a78_cart_slot_device::header_type(uint16_t head, uint32_t len, bool log) con
 {
 	// let's try to auto-fix some common errors in the header (but RAM at $4000 alone is a board)
 	int const flat_ram = a78_flat_ram_type(head, len);
-	int const mapper = validate_header(head & ((flat_ram >= 0) ? ~0x04 : ~0), log);
+	int mapper = validate_header(head & ((flat_ram >= 0) ? ~0x04 : ~0), log);
+
+	// SuperGame bankswitching on an image of less than two banks: there is nothing to switch
+	if ((mapper & 0x02) && len < 0x8000)
+	{
+		if (log)
+			logerror("SuperGame bankswitching on an image of %u bytes: taken as a flat board\n", len);
+		mapper &= ~0x02;
+	}
 
 	int type = A78_TYPE0;
 	switch (mapper & 0x2e)
