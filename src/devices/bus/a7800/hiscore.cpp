@@ -4,6 +4,8 @@
 
  A7800 HighScore passthrough cart emulation
 
+ Its RAM ($1000-$17FF) and ROM ($3000-$3FFF) are the CPU's only: MARIA, there and everywhere else, sees
+ the game plugged into it, and so does the CPU everywhere else.
 
 ***********************************************************************************************************/
 
@@ -39,7 +41,7 @@ void a78_hiscore_device::device_add_mconfig(machine_config &config)
 
 uint8_t a78_hiscore_device::read_10xx(offs_t offset)
 {
-	return m_nvram[offset];
+	return m_dmaactive ? m_hscslot->read_10xx(offset) : m_nvram[offset];
 }
 
 void a78_hiscore_device::write_10xx(offs_t offset, uint8_t data)
@@ -49,7 +51,23 @@ void a78_hiscore_device::write_10xx(offs_t offset, uint8_t data)
 
 uint8_t a78_hiscore_device::read_30xx(offs_t offset)
 {
-	return m_rom[offset];
+	return m_dmaactive ? m_hscslot->read_30xx(offset) : m_rom[offset];
+}
+
+uint8_t a78_hiscore_device::read_08xx(offs_t offset)
+{
+	return m_hscslot->read_08xx(offset);
+}
+
+void a78_hiscore_device::write_08xx(offs_t offset, uint8_t data)
+{
+	m_hscslot->write_08xx(offset, data);
+}
+
+void a78_hiscore_device::set_dma_active(bool active)
+{
+	m_dmaactive = active;
+	m_hscslot->set_dma_active(active);
 }
 
 uint8_t a78_hiscore_device::read_04xx(offs_t offset)

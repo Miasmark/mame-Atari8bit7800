@@ -739,6 +739,17 @@ void a78_cart_slot_device::alloc_board_memory()
 
 
 /*-------------------------------------------------
+ game_slot - the slot holding the game
+ -------------------------------------------------*/
+
+a78_cart_slot_device &a78_cart_slot_device::game_slot()
+{
+	a78_cart_slot_device *const inner = m_cart ? m_cart->game_slot() : nullptr;
+	return (inner && inner->has_cart()) ? *inner : *this;
+}
+
+
+/*-------------------------------------------------
  media_details - the board, and how it was told
  -------------------------------------------------*/
 
