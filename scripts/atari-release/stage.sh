@@ -14,7 +14,7 @@ for list in a2600 a2600_cass a5200 a7800 a800 a800_cass a800_flop intv intvecs x
 	cp "$here/hash/$list.xml" "$dir/hash/"
 done
 cp "$here/COPYING" "$dir/COPYING.txt"
-cp "$here/README-atari.md" "$dir/"
+cp "$here/README-atari.md" "$here/README-intellivision.md" "$dir/"
 
 cat > "$dir/README.txt" <<TEXT
 MAME 0.289 with the Atari patch set - $version (Atari-only build)

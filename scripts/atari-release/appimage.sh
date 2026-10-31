@@ -14,7 +14,7 @@ app=$work/AppDir
 mkdir -p "$app/usr/bin" "$app/usr/share/mame" "$app/usr/share/doc/mame"
 cp "$staged/mame" "$app/usr/bin/mame"
 cp -r "$staged/hash" "$app/usr/share/mame/"
-cp "$staged/README.txt" "$staged/README-atari.md" "$staged/COPYING.txt" "$app/usr/share/doc/mame/"
+cp "$staged/README.txt" "$staged/README-atari.md" "$staged/README-intellivision.md" "$staged/COPYING.txt" "$app/usr/share/doc/mame/"
 
 cat > "$work/mame.desktop" <<TEXT
 [Desktop Entry]
