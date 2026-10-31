@@ -203,6 +203,7 @@ private:
 	void cp1610_j(uint16_t addr);
 	void cp1610_je(uint16_t addr);
 	void cp1610_jd(uint16_t addr);
+	void cp1610_sdbd_direct(uint16_t op);
 	void cp1610_do_sdbd();
 	void cp1610_do_jumps();
 	bool take_requests();
