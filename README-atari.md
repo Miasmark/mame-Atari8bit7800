@@ -75,7 +75,8 @@ mode. With Warm, every colour matches the Pocket core's own screenshots of a col
 - **High Score Cartridge from its own image:** `-cart "High Score Cartridge.a78" -cart2 game.a78`
   (the software list entry `hiscore` works as before). Its scores are saved in the nvram folder.
   Any board runs through it, bankset ones included: its RAM ($1000-$17FF) and ROM are the CPU's
-  only, and MARIA sees the game.
+  only, and MARIA sees the game. The same goes for the XM and XBoarD (software list entries `xm`
+  and `xboard`, the game as `-cart2`): a game's own POKEY at $0450 or $0800 answers through them.
 - **SaveKey / AtariVox in controller port 2** (Machine Configuration, Controller Port 2): Auto plugs
   one in when the cartridge's header asks for it; Joystick or SaveKey / AtariVox force the choice.
   It also works in 2600 mode. The AtariVox's voice is there too (see the 2600's AtariVox below).
