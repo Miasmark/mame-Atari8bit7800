@@ -614,6 +614,13 @@ std::pair<std::error_condition, std::string> a78_cart_slot_device::call_load()
 			int const flat_ram = a78_flat_ram_type(get_u16be(&head[53]), len);
 			mapper = validate_header(get_u16be(&head[53]) & ((flat_ram >= 0) ? ~0x04 : ~0), true);
 
+			// SuperGame bankswitching on an image of less than two banks: there is nothing to switch
+			if ((mapper & 0x02) && len < 0x8000)
+			{
+				logerror("SuperGame bankswitching on an image of %u bytes: taken as a flat board\n", len);
+				mapper &= ~0x02;
+			}
+
 			switch (mapper & 0x2e)
 			{
 				case 0x0000:
@@ -869,7 +876,9 @@ std::string a78_cart_slot_device::get_default_card_software(get_default_card_sof
 
 		// let's try to auto-fix some common errors in the header (but RAM at $4000 alone is a board)
 		int const flat_ram = a78_flat_ram_type(get_u16be(&head[53]), get_u32be(&head[49]));
-		int const mapper = validate_header(get_u16be(&head[53]) & ((flat_ram >= 0) ? ~0x04 : ~0), false);
+		int mapper = validate_header(get_u16be(&head[53]) & ((flat_ram >= 0) ? ~0x04 : ~0), false);
+		if ((mapper & 0x02) && get_u32be(&head[49]) < 0x8000)
+			mapper &= ~0x02;    // SuperGame bankswitching with nothing to switch: as above
 
 		int type = A78_TYPE0;
 		switch (mapper & 0x2e)
