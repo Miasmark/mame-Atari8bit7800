@@ -20,11 +20,16 @@ public:
 	// reading and writing
 	virtual uint8_t read_04xx(offs_t offset) override;
 	virtual void write_04xx(offs_t offset, uint8_t data) override;
+	virtual uint8_t read_08xx(offs_t offset) override;
+	virtual void write_08xx(offs_t offset, uint8_t data) override;
 	virtual uint8_t read_10xx(offs_t offset) override;
 	virtual void write_10xx(offs_t offset, uint8_t data) override;
 	virtual uint8_t read_30xx(offs_t offset) override;
 	virtual uint8_t read_40xx(offs_t offset) override;
 	virtual void write_40xx(offs_t offset, uint8_t data) override;
+
+	virtual void set_dma_active(bool active) override;
+	virtual a78_cart_slot_device *game_slot() override { return m_hscslot.target(); }
 
 protected:
 	virtual void device_add_mconfig(machine_config &config) override ATTR_COLD;
