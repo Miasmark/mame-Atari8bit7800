@@ -265,29 +265,73 @@ intvecs_keybd_device::intvecs_keybd_device(const machine_config &mconfig, const 
 
 void intvecs_keybd_device::device_start()
 {
-	save_item(NAME(m_psg_portA));
+	save_item(NAME(m_drive));
+	save_item(NAME(m_driven));
 }
 
 void intvecs_keybd_device::device_reset()
 {
-	m_psg_portA = 0;
+	m_drive[0] = m_drive[1] = 0xff;
+	m_driven[0] = m_driven[1] = 0;
+}
+
+/*
+    The computer keyboard has no diodes: a key held joins its row (port A line) and column (port B
+    line), and the lines joined together read as one. A group reads 1 if any of its lines is driven
+    1, else 0 if one is driven 0, else 1 (the pull-ups). So a key joined to a line driven high
+    vanishes (masking), three corners of a rectangle bring in the fourth, and the matrix reads the
+    same scanned from either port (measured on a console with the ECS).
+*/
+uint16_t intvecs_keybd_device::read_lines()
+{
+	// lines 0-7 are port A's, 8-15 port B's; join them through the keys held
+	uint8_t group[16];
+	for (int i = 0; i < 16; i++)
+		group[i] = i;
+	auto find = [&group] (int i) { while (group[i] != i) i = group[i] = group[group[i]]; return i; };
+	for (int row = 0; row < 7; row++)
+	{
+		uint8_t const held = ~m_keybd[row]->read();
+		for (int col = 0; col < 8; col++)
+			if (BIT(held, col))
+				group[find(row)] = find(8 + col);
+	}
+
+	uint16_t high = 0, low = 0;
+	for (int i = 0; i < 16; i++)
+	{
+		int const port = i >> 3, bit = i & 7;
+		if (BIT(m_driven[port], bit))
+			(BIT(m_drive[port], bit) ? high : low) |= 1 << find(i);
+	}
+
+	uint16_t lines = 0;
+	for (int i = 0; i < 16; i++)
+		if (BIT(high, find(i)) || !BIT(low, find(i)))
+			lines |= 1 << i;
+	return lines;
+}
+
+uint8_t intvecs_keybd_device::read_portA()
+{
+	return read_lines() & 0xff;
 }
 
 uint8_t intvecs_keybd_device::read_portB()
 {
-	uint8_t val = 0xff;
-	// return correct result if more than one bit of 0xFE is set
-	for (int i = 0; i < 7; i++)
-	{
-		if (BIT(m_psg_portA, i))
-			val &= m_keybd[i]->read();
-	}
-	return val;
+	return read_lines() >> 8;
 }
 
-void intvecs_keybd_device::write_portA(uint8_t data)
+void intvecs_keybd_device::write_portA(uint8_t data, uint8_t mask)
 {
-	m_psg_portA = (~data) & 0xff;
+	m_drive[0] = data;
+	m_driven[0] = mask;
+}
+
+void intvecs_keybd_device::write_portB(uint8_t data, uint8_t mask)
+{
+	m_drive[1] = data;
+	m_driven[1] = mask;
 }
 
 
@@ -418,7 +462,7 @@ uint8_t intvecs_synth_device::read_portB()
 	return val;
 }
 
-void intvecs_synth_device::write_portA(uint8_t data)
+void intvecs_synth_device::write_portA(uint8_t data, uint8_t mask)
 {
 	m_psg_portA = (~data) & 0xff;
 }

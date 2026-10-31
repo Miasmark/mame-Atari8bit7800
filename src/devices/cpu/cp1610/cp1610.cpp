@@ -200,6 +200,8 @@ void cp1610_cpu_device::cp1610_negr(int n)
 	CLR_SZOC;
 	temp = (m_r[n] ^ 0xffff) + 1;
 	SET_COV(0,temp,1);
+	if (m_r[n] == 0)
+		m_flags |= C;   // the carry out of $FFFF + 1 (measured on a console)
 	m_r[n] = temp;
 	SET_SZ(m_r[n]);
 	m_icount -= 6;
@@ -1036,8 +1038,8 @@ void cp1610_cpu_device::cp1610_mvoat(int s, int m)
 void cp1610_cpu_device::cp1610_mvoat_i(int s, int m)
 {
 	m_mask_interrupts = true;
-	cp1610_writemem16(m_r[m],m_r[s]);
-	m_r[m]++;
+	uint16_t const addr = m_r[m]++;
+	cp1610_writemem16(addr,m_r[s]);     // MVO@ R4, R4 writes the incremented pointer (measured on a console)
 	m_icount -= 9;
 }
 
@@ -1541,11 +1543,12 @@ void cp1610_cpu_device::cp1610_sdbd_mviat_i(int r, int d)
  *  S Z C OV 0x001  1 010 mmm ddd   (mmm = 101)
  *  - - - -  SDBD, MVI@ Rm, Rd
  ***************************************************/
+// with R6, SDBD decrements it once and reads the same word twice, so both halves of the result
+// are its low byte (measured on a console with MVI@; the other operations are taken to match)
 void cp1610_cpu_device::cp1610_sdbd_mviat_d(int r, int d)
 {
 	m_r[r]--;
 	m_r[d] = cp1610_readmem16(m_r[r]) & 0xff;
-	m_r[r]--;
 	m_r[d] |= (cp1610_readmem16(m_r[r]) << 8);
 	m_icount -= 17;
 }
@@ -1609,7 +1612,6 @@ void cp1610_cpu_device::cp1610_sdbd_addat_d(int r, int d)
 	CLR_SZOC;
 	m_r[r]--;
 	temp = cp1610_readmem16(m_r[r]) & 0xff;
-	m_r[r]--;
 	temp |= (cp1610_readmem16(m_r[r]) << 8);
 	SET_COV(m_r[d],temp,0);
 	m_r[d] += temp;
@@ -1683,7 +1685,6 @@ void cp1610_cpu_device::cp1610_sdbd_subat_d(int r, int d)
 	CLR_SZOC;
 	m_r[r]--;
 	temp = cp1610_readmem16(m_r[r]) & 0xff;
-	m_r[r]--;
 	temp |= (cp1610_readmem16(m_r[r]) << 8);
 	temp = (temp ^ 0xffff) + 1;
 	SET_COV(m_r[d],temp,1);
@@ -1762,7 +1763,6 @@ void cp1610_cpu_device::cp1610_sdbd_cmpat_d(int r, int d)
 	CLR_SZOC;
 	m_r[r]--;
 	temp = cp1610_readmem16(m_r[r]) & 0xff;
-	m_r[r]--;
 	temp |= (cp1610_readmem16(m_r[r]) << 8);
 	temp = (temp ^ 0xffff) + 1;
 	SET_COV(m_r[d],temp,1);
@@ -1835,7 +1835,6 @@ void cp1610_cpu_device::cp1610_sdbd_andat_d(int r, int d)
 	CLR_SZ;
 	m_r[r]--;
 	temp = cp1610_readmem16(m_r[r]) & 0xff;
-	m_r[r]--;
 	temp |= (cp1610_readmem16(m_r[r]) << 8);
 	m_r[d] &= temp;
 	SET_SZ(m_r[d]);
@@ -1901,7 +1900,6 @@ void cp1610_cpu_device::cp1610_sdbd_xorat_d(int r, int d)
 	CLR_SZ;
 	m_r[r]--;
 	temp = cp1610_readmem16(m_r[r]) & 0xff;
-	m_r[r]--;
 	temp |= (cp1610_readmem16(m_r[r]) << 8);
 	m_r[d] ^= temp;
 	SET_SZ(m_r[d]);
@@ -1986,6 +1984,61 @@ void cp1610_cpu_device::cp1610_jd(uint16_t addr)
 	m_intr_enabled = false;
 }
 
+/***************************************************
+ *  S Z C OV 0x001  1 ooo 000 ddd  x xxx xLL LLL LLL  x xxx xUU UUU UUU
+ *  x x x x  SDBD, MVI/ADD/SUB/CMP/AND/XOR ADDR, Rd
+ *  The address is the low bytes of the next two words, low first, and one 16-bit word is read
+ *  there: a three-word instruction (measured on a console with MVI)
+ ***************************************************/
+void cp1610_cpu_device::cp1610_sdbd_direct(uint16_t op)
+{
+	uint16_t addr = cp1610_readop(m_r[7]) & 0xff;
+	m_r[7]++;
+	addr |= (cp1610_readop(m_r[7]) & 0xff) << 8;
+	m_r[7]++;
+	uint32_t data = cp1610_readmem16(addr);
+	int const d = op & 7;
+	uint16_t res;
+
+	switch (op & 0x3c0)
+	{
+	case 0x280: // MVI
+		m_r[d] = data;
+		break;
+	case 0x2c0: // ADD
+		CLR_SZOC;
+		SET_COV(m_r[d],data,0);
+		m_r[d] += data;
+		SET_SZ(m_r[d]);
+		break;
+	case 0x300: // SUB
+		CLR_SZOC;
+		data = (data ^ 0xffff) + 1;
+		SET_COV(m_r[d],data,1);
+		m_r[d] += data & 0xffff;
+		SET_SZ(m_r[d]);
+		break;
+	case 0x340: // CMP
+		CLR_SZOC;
+		data = (data ^ 0xffff) + 1;
+		SET_COV(m_r[d],data,1);
+		res = m_r[d] + (data & 0xffff);
+		SET_SZ(res);
+		break;
+	case 0x380: // AND
+		CLR_SZ;
+		m_r[d] &= data;
+		SET_SZ(m_r[d]);
+		break;
+	case 0x3c0: // XOR
+		CLR_SZ;
+		m_r[d] ^= data;
+		SET_SZ(m_r[d]);
+		break;
+	}
+	m_icount -= 14;
+}
+
 void cp1610_cpu_device::cp1610_do_sdbd()
 {
 	uint16_t sdbdtype, dest;
@@ -2001,16 +2054,24 @@ void cp1610_cpu_device::cp1610_do_sdbd()
 
 	switch (sdbdtype & 0x3f8)
 	{
-	case 0x240: /* Not supporting SDBD MVO@ or SDBD MVOI for now */
-	case 0x248:
-	case 0x250:
-	case 0x258:
-	case 0x260:
-	case 0x268:
-	case 0x270:
-	case 0x278: /* 1 001 xxx xxx */ cp1610_illegal(); break;
+	// SDBD before an MVO is ignored: one ordinary 16-bit write (measured on a console)
+	case 0x240: /* 1 001 000 xxx */ m_icount -= 4; cp1610_mvo(dest); break;
+	case 0x248: /* 1 001 001 xxx */
+	case 0x250: /* 1 001 010 xxx */
+	case 0x258: /* 1 001 011 xxx */ m_icount -= 4; cp1610_mvoat(dest, (sdbdtype >> 3) & 7); break;
+	case 0x260: /* 1 001 100 xxx */
+	case 0x268: /* 1 001 101 xxx */
+	case 0x270: /* 1 001 110 xxx */ m_icount -= 4; cp1610_mvoat_i(dest, (sdbdtype >> 3) & 7); break;
+	case 0x278: /* 1 001 111 xxx */ m_icount -= 4; cp1610_mvoi(dest); break;
 
-	case 0x280: /* 1 010 000 xxx */ cp1610_sdbd_mviat(0,dest); break;
+	// direct mode: the address is the double-byte data (measured on a console, with MVI)
+	case 0x280: /* 1 010 000 xxx */
+	case 0x2c0: /* 1 011 000 xxx */
+	case 0x300: /* 1 100 000 xxx */
+	case 0x340: /* 1 101 000 xxx */
+	case 0x380: /* 1 110 000 xxx */
+	case 0x3c0: /* 1 111 000 xxx */ cp1610_sdbd_direct(sdbdtype); break;
+
 	case 0x288: /* 1 010 001 xxx */ cp1610_sdbd_mviat(1,dest); break;
 	case 0x290: /* 1 010 010 xxx */ cp1610_sdbd_mviat(2,dest); break;
 	case 0x298: /* 1 010 011 xxx */ cp1610_sdbd_mviat(3,dest); break;
@@ -2019,7 +2080,6 @@ void cp1610_cpu_device::cp1610_do_sdbd()
 	case 0x2b0: /* 1 010 110 xxx */ cp1610_sdbd_mviat_d(6,dest); break; /* ??? */
 	case 0x2b8: /* 1 010 111 xxx */ cp1610_sdbd_mvii(dest); break;
 
-	case 0x2c0: /* 1 011 000 xxx */ cp1610_sdbd_addat(0,dest); break;
 	case 0x2c8: /* 1 011 001 xxx */ cp1610_sdbd_addat(1,dest); break;
 	case 0x2d0: /* 1 011 010 xxx */ cp1610_sdbd_addat(2,dest); break;
 	case 0x2d8: /* 1 011 011 xxx */ cp1610_sdbd_addat(3,dest); break;
@@ -2028,7 +2088,6 @@ void cp1610_cpu_device::cp1610_do_sdbd()
 	case 0x2f0: /* 1 011 110 xxx */ cp1610_sdbd_addat_d(6,dest); break; /* ??? */
 	case 0x2f8: /* 1 011 111 xxx */ cp1610_sdbd_addi(dest); break;
 
-	case 0x300: /* 1 100 000 xxx */ cp1610_sdbd_subat(0,dest); break;
 	case 0x308: /* 1 100 001 xxx */ cp1610_sdbd_subat(1,dest); break;
 	case 0x310: /* 1 100 010 xxx */ cp1610_sdbd_subat(2,dest); break;
 	case 0x318: /* 1 100 011 xxx */ cp1610_sdbd_subat(3,dest); break;
@@ -2037,7 +2096,6 @@ void cp1610_cpu_device::cp1610_do_sdbd()
 	case 0x330: /* 1 100 110 xxx */ cp1610_sdbd_subat_d(6,dest); break; /* ??? */
 	case 0x338: /* 1 100 111 xxx */ cp1610_sdbd_subi(dest); break;
 
-	case 0x340: /* 1 101 000 xxx */ cp1610_sdbd_cmpat(0,dest); break;
 	case 0x348: /* 1 101 001 xxx */ cp1610_sdbd_cmpat(1,dest); break;
 	case 0x350: /* 1 101 010 xxx */ cp1610_sdbd_cmpat(2,dest); break;
 	case 0x358: /* 1 101 011 xxx */ cp1610_sdbd_cmpat(3,dest); break;
@@ -2046,7 +2104,6 @@ void cp1610_cpu_device::cp1610_do_sdbd()
 	case 0x370: /* 1 101 110 xxx */ cp1610_sdbd_cmpat_d(6,dest); break; /* ??? */
 	case 0x378: /* 1 101 111 xxx */ cp1610_sdbd_cmpi(dest); break;
 
-	case 0x380: /* 1 110 000 xxx */ cp1610_sdbd_andat(0,dest); break;
 	case 0x388: /* 1 110 001 xxx */ cp1610_sdbd_andat(1,dest); break;
 	case 0x390: /* 1 110 010 xxx */ cp1610_sdbd_andat(2,dest); break;
 	case 0x398: /* 1 110 011 xxx */ cp1610_sdbd_andat(3,dest); break;
@@ -2055,7 +2112,6 @@ void cp1610_cpu_device::cp1610_do_sdbd()
 	case 0x3b0: /* 1 110 110 xxx */ cp1610_sdbd_andat_d(6,dest); break; /* ??? */
 	case 0x3b8: /* 1 110 111 xxx */ cp1610_sdbd_andi(dest); break;
 
-	case 0x3c0: /* 1 110 000 xxx */ cp1610_sdbd_xorat(0,dest); break;
 	case 0x3c8: /* 1 110 001 xxx */ cp1610_sdbd_xorat(1,dest); break;
 	case 0x3d0: /* 1 110 010 xxx */ cp1610_sdbd_xorat(2,dest); break;
 	case 0x3d8: /* 1 110 011 xxx */ cp1610_sdbd_xorat(3,dest); break;
@@ -2101,7 +2157,7 @@ void cp1610_cpu_device::cp1610_do_jumps()
 	case 0x300: /* 1 1xx xxx x00 */ cp1610_j(addr); break;
 	case 0x301: /* 1 1xx xxx x01 */ cp1610_je(addr); break;
 	case 0x302: /* 1 1xx xxx x10 */ cp1610_jd(addr); break;
-	case 0x303: /* 1 1xx xxx x11 */ cp1610_illegal(); break;
+	case 0x303: /* 1 1xx xxx x11 */ cp1610_je(addr); break; // as JE (measured on a console)
 	}
 
 	m_icount -= 12;
@@ -2120,8 +2176,8 @@ void cp1610_cpu_device::execute_run()
 
 	do
 	{
-		// requests are taken between instructions, after one that is interruptible
-		if (!m_mask_interrupts && take_requests())
+		// requests are taken between instructions
+		if (take_requests())
 		{
 			m_icount = 0;
 			break;
@@ -3305,15 +3361,16 @@ void cp1610_cpu_device::execute_run()
 
 
 //-------------------------------------------------
-//  take_requests - at the end of an interruptible
-//  instruction: lend the bus, halt or take an
-//  interrupt; true while the CPU is to wait
+//  take_requests - between instructions: lend the
+//  bus, and after an interruptible one halt or
+//  take an interrupt; true while the CPU is to wait
 //-------------------------------------------------
 
 bool cp1610_cpu_device::take_requests()
 {
-	// BUSRQ is sampled whether or not interrupts are enabled; once it goes, two NACT cycles pass
-	// before the next fetch, BUSAK rising in the third
+	// BUSRQ is sampled at the end of every instruction, interruptible or not (a console lends the bus
+	// between the non-interruptible MVOs of a copy loop), whether or not interrupts are enabled; once
+	// it goes, two NACT cycles pass before the next fetch, BUSAK rising in the third
 	if (m_busak)
 	{
 		if (m_busrq_state != CLEAR_LINE)
@@ -3328,6 +3385,9 @@ bool cp1610_cpu_device::take_requests()
 		m_write_busak(ASSERT_LINE);
 		return true;
 	}
+
+	if (m_mask_interrupts)
+		return false;
 
 	if (m_halted)
 		return true;

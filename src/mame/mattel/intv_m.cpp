@@ -644,10 +644,10 @@ void intv_state::machine_start()
 
 
 /*
-    The STIC takes the bus from the CPU with BUSRQ, which the CPU grants (BUSAK) at the end of its next
-    interruptible instruction and holds until BUSRQ goes. With the display on, it does so once at the
-    end of VBlank, for FRAME_BUSRQ cycles, then for ROW_BUSRQ cycles to fetch each row of cards, one
-    every 16 scanlines while the frame lasts: 12 rows, and a 13th with no vertical delay. At BUSAK the
+    The STIC takes the bus from the CPU with BUSRQ, which the CPU grants (BUSAK) at the end of its
+    current instruction and holds until BUSRQ goes. With the display on, it does so once at the end of
+    VBlank, for FRAME_BUSRQ cycles, then for ROW_BUSRQ cycles to fetch each of the 12 rows of cards,
+    one every 16 scanlines (a console's timings: no 13th fetch with no vertical delay). At BUSAK the
     System RAM leaves bus copy and loads its FIFO with the next row of BACKTAB, which the STIC then
     takes; a request the CPU does not grant in time leaves the FIFO as it was, and the STIC shows its
     row again. Bus copy starts, and the FIFO's address counter goes back to the top of BACKTAB, at the
@@ -674,7 +674,7 @@ TIMER_CALLBACK_MEMBER(intv_state::row_fetch)
 
 	m_stic_row = param;
 	bus_request(stic_device::ROW_BUSRQ);
-	if (stic_device::FIRST_FETCH + stic_device::CYCLES_PER_SCANLINE * stic_device::Y_SCALE * m_row_delay + ROW_CYCLES * (param + 1) < stic_device::FRAME_CYCLES)
+	if (param + 1 < stic_device::BACKTAB_HEIGHT)
 		m_row_fetch_timer->adjust(m_maincpu->cycles_to_attotime(ROW_CYCLES), param + 1);
 }
 

@@ -30,6 +30,8 @@ public:
 	// RAM
 	virtual uint16_t read_ram(offs_t offset) override { return (int)m_ram[offset & (m_ram.size() - 1)]; }
 	virtual void write_ram(offs_t offset, uint16_t data) override { m_ram[offset & (m_ram.size() - 1)] = data & 0xff; }
+	// the cassette and printer UART, with nothing connected
+	uint16_t read_uart(offs_t offset);
 	// AY8917
 	virtual uint16_t read_ay(offs_t offset) override;
 	virtual void write_ay(offs_t offset, uint16_t data) override;
