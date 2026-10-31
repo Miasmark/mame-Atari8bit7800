@@ -1726,7 +1726,6 @@ void a7800_state::machine_start()
 			m_maria->set_cart_ram_window(0x8000, 0xffff);
 		switch (board)
 		{
-		case A78_XB_BOARD:
 		case A78_TYPE0_POK450:
 		case A78_TYPE0_RAM_POK450:
 		case A78_TYPE1_POK450:
@@ -1772,20 +1771,20 @@ void a7800_state::machine_start()
 			m_maincpu->space(AS_PROGRAM).install_readwrite_handler(0x0800, 0x0fff, read8sm_delegate(*m_cart, FUNC(a78_cart_slot_device::read_08xx)), write8sm_delegate(*m_cart, FUNC(a78_cart_slot_device::write_08xx)));
 			m_maria->space(atari_maria_device::AS_DMA).install_read_handler(0x0800, 0x0fff, read8sm_delegate(*m_cart, FUNC(a78_cart_slot_device::read_08xx)));
 			break;
-		case A78_XM_BOARD:
-			// POKEY and RAM and YM regs at 0x400-0x47f
-			m_maincpu->space(AS_PROGRAM).install_readwrite_handler(0x0400, 0x047f, read8sm_delegate(*m_cart, FUNC(a78_cart_slot_device::read_04xx)), write8sm_delegate(*m_cart, FUNC(a78_cart_slot_device::write_04xx)));
-			m_maria->space(atari_maria_device::AS_DMA).install_read_handler(0x0400, 0x047f, read8sm_delegate(*m_cart, FUNC(a78_cart_slot_device::read_04xx)));
-			// ROM+NVRAM accesses for HiScore
-			m_maincpu->space(AS_PROGRAM).install_readwrite_handler(0x1000, 0x17ff, read8sm_delegate(*m_cart, FUNC(a78_cart_slot_device::read_10xx)), write8sm_delegate(*m_cart, FUNC(a78_cart_slot_device::write_10xx)));
-			m_maria->space(atari_maria_device::AS_DMA).install_read_handler(0x1000, 0x17ff, read8sm_delegate(*m_cart, FUNC(a78_cart_slot_device::read_10xx)));
-			m_maincpu->space(AS_PROGRAM).install_readwrite_handler(0x3000, 0x3fff, read8sm_delegate(*m_cart, FUNC(a78_cart_slot_device::read_30xx)), write8sm_delegate(*m_cart, FUNC(a78_cart_slot_device::write_30xx)));
-			m_maria->space(atari_maria_device::AS_DMA).install_read_handler(0x3000, 0x3fff, read8sm_delegate(*m_cart, FUNC(a78_cart_slot_device::read_30xx)));
-			break;
 		}
 
-		// the High Score Cart's RAM and ROM, for the CPU only (a 52K bankset's $3000 stays MARIA's)
-		if (m_cart->get_cart_type() == A78_HSC)
+		// the XBoarD's and XM's POKEY, YM2151 and registers at 0x400-0x47f (what they don't
+		// decode there goes on to the game)
+		int const front = m_cart->get_cart_type();
+		if (front == A78_XB_BOARD || front == A78_XM_BOARD)
+		{
+			m_maincpu->space(AS_PROGRAM).install_readwrite_handler(0x0400, 0x047f, read8sm_delegate(*m_cart, FUNC(a78_cart_slot_device::read_04xx)), write8sm_delegate(*m_cart, FUNC(a78_cart_slot_device::write_04xx)));
+			m_maria->space(atari_maria_device::AS_DMA).install_read_handler(0x0400, 0x047f, read8sm_delegate(*m_cart, FUNC(a78_cart_slot_device::read_04xx)));
+		}
+
+		// the High Score Cart's RAM and ROM (on its own or in the XM), for the CPU only (a 52K
+		// bankset's $3000 stays MARIA's)
+		if (front == A78_HSC || front == A78_XM_BOARD)
 		{
 			m_maincpu->space(AS_PROGRAM).install_readwrite_handler(0x1000, 0x17ff, read8sm_delegate(*m_cart, FUNC(a78_cart_slot_device::read_10xx)), write8sm_delegate(*m_cart, FUNC(a78_cart_slot_device::write_10xx)));
 			m_maincpu->space(AS_PROGRAM).install_readwrite_handler(0x3000, 0x3fff, read8sm_delegate(*m_cart, FUNC(a78_cart_slot_device::read_30xx)), write8sm_delegate(*m_cart, FUNC(a78_cart_slot_device::write_30xx)));

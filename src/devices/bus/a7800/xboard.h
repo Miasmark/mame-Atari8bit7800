@@ -22,8 +22,14 @@ public:
 	// reading and writing
 	virtual uint8_t read_04xx(offs_t offset) override;
 	virtual void write_04xx(offs_t offset, uint8_t data) override;
+	virtual uint8_t read_08xx(offs_t offset) override;
+	virtual void write_08xx(offs_t offset, uint8_t data) override;
+	virtual uint8_t read_30xx(offs_t offset) override;
 	virtual uint8_t read_40xx(offs_t offset) override;
 	virtual void write_40xx(offs_t offset, uint8_t data) override;
+
+	virtual void set_dma_active(bool active) override;
+	virtual a78_cart_slot_device *game_slot() override { return m_xbslot.target(); }
 
 protected:
 	a78_xboard_device(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, uint32_t clock);
