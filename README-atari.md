@@ -65,6 +65,11 @@ mode. With Warm, every colour matches the Pocket core's own screenshots of a col
   debugger and Lua watches can tell its reads from the CPU's; updated to the 7800 Software Guide's
   revised DMA timing (October 2026): a display list interrupt costs no DMA time, holey character
   objects cost 6 or 9 cycles, and the first DMA of each frame 8 more.
+- **MARIA's DMA cost checked on a real NTSC 7800** with the a7800 toolkit's on-screen measuring
+  carts (15 display shapes). The first zone of each frame was drawn one line too tall, which
+  cost a line of DMA a frame and put the picture a line low; a line past the DMA limit now holds
+  the CPU for 107 cycles. Every shape now costs what it does on the console to within 21 cycles
+  a frame, 12 of the 15 within 7.
 - **No BIOS file needed.** Without one the 7800 boots straight into the cartridge, as with
   `-bios skip`, and the system is not shown as missing its ROMs; MAME notes at start that the
   optional BIOS file is missing. `bios skip` in `a7800.ini` (or `a7800p.ini`) makes skipping the
