@@ -140,26 +140,31 @@ mode. With Warm, every colour matches the Pocket core's own screenshots of a col
 ## Mattel Intellivision (`intv`, `intv2`, `intvoice`, `intvecs`, ...)
 
 Corrections found while writing a clean-room Intellivision core for the Analogue Pocket, from GI's
-CP-1600/CP1610 manuals, the Intellivision wiki and recordings of a real console:
+CP-1600/CP1610 manuals, the Intellivision wiki and recordings of a real console, then checked on a
+console (a Model 2609 with the ECS) with five test cartridges: see
+[README-intellivision.md](README-intellivision.md).
 
 - **The STIC takes the bus from the CPU.** MAME took its stolen cycles off the CPU from a timer,
   where that did nothing: the CPU had the whole frame. Now the STIC asserts the CP1610's BUSRQ, the
-  CPU stops at the end of its next interruptible instruction until it goes (and two cycles more),
-  and with the display on it takes about 1,460 cycles of a frame's 14,934 (1,350 with a vertical
-  delay). A row of cards is copied when the CPU stops for it; bus copy starts when the CPU takes the
-  VBlank interrupt. Games that time themselves against the display (Sewer Sam, TRON Solar Sailer)
-  drifted against it.
+  CPU stops at the end of its current instruction until it goes (and two cycles more), and with the
+  display on it takes about 1,370 cycles of a frame's 14,934 (the console: 1,365). A row of cards is
+  copied when the CPU stops for it, at the same point as on the console; bus copy starts when the
+  CPU takes the VBlank interrupt. Games that time themselves against the display (Sewer Sam, TRON
+  Solar Sailer) drifted against it.
 - **A frame is 14,934 CPU cycles** (262 lines of 57), not 14,934.68.
 - **Interrupts are taken after the first interruptible instruction that ends after the request**;
   they were one instruction late.
 - **CP1610 cycles:** SETC takes 4 cycles (it was 6), SARC Rr,2 takes 8 (6). HLT halts the CPU
   after the next interruptible instruction; it did nothing.
+- **Undefined CP1610 cases as the console runs them:** NEGR of 0 sets the carry; SDBD with R6, with
+  an MVO and with a direct address; J with both interrupt bits; MVO@ of an auto-incrementing pointer
+  to itself.
 - **ECS:** all 16 ROM pages, so IntyBASIC's ECS start-up can page the ECS ROMs out; its second sound
-  chip is an AY-3-8917 (no second envelope/volume control bit).
+  chip is an AY-3-8917 (no second envelope/volume control bit). The computer keyboard has no diodes,
+  as on the console: keys can mask each other, and it reads the same scanned from either port. The
+  cassette/printer UART says it is ready, so a tape save finishes (the data goes nowhere).
 - **Intellivoice:** the SP0256 speaks at 10 kHz (it was 9,285 Hz, 7.7 % too low and too slow);
   upstream MAME has this too.
-
-The exact number of stolen cycles is still to be measured on a console.
 
 ## Core and debugging
 
