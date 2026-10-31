@@ -2176,8 +2176,8 @@ void cp1610_cpu_device::execute_run()
 
 	do
 	{
-		// requests are taken between instructions, after one that is interruptible
-		if (!m_mask_interrupts && take_requests())
+		// requests are taken between instructions
+		if (take_requests())
 		{
 			m_icount = 0;
 			break;
@@ -3361,15 +3361,16 @@ void cp1610_cpu_device::execute_run()
 
 
 //-------------------------------------------------
-//  take_requests - at the end of an interruptible
-//  instruction: lend the bus, halt or take an
-//  interrupt; true while the CPU is to wait
+//  take_requests - between instructions: lend the
+//  bus, and after an interruptible one halt or
+//  take an interrupt; true while the CPU is to wait
 //-------------------------------------------------
 
 bool cp1610_cpu_device::take_requests()
 {
-	// BUSRQ is sampled whether or not interrupts are enabled; once it goes, two NACT cycles pass
-	// before the next fetch, BUSAK rising in the third
+	// BUSRQ is sampled at the end of every instruction, interruptible or not (a console lends the bus
+	// between the non-interruptible MVOs of a copy loop), whether or not interrupts are enabled; once
+	// it goes, two NACT cycles pass before the next fetch, BUSAK rising in the third
 	if (m_busak)
 	{
 		if (m_busrq_state != CLEAR_LINE)
@@ -3384,6 +3385,9 @@ bool cp1610_cpu_device::take_requests()
 		m_write_busak(ASSERT_LINE);
 		return true;
 	}
+
+	if (m_mask_interrupts)
+		return false;
 
 	if (m_halted)
 		return true;

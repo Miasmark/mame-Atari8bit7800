@@ -47,7 +47,7 @@ public:
 	static constexpr int        CYCLES_PER_SCANLINE     = 57;
 	static constexpr int        FRAME_CYCLES            = CYCLES_PER_SCANLINE * 262;
 	static constexpr int        ROW_BUSRQ               = 110; // BUSRQ held for each backtab row fetch
-	static constexpr int        FRAME_BUSRQ             = 42; // BUSRQ held just after end of vblank and before first row fetch (approximate)
+	static constexpr int        FRAME_BUSRQ             = 100; // BUSRQ held at the end of vblank, before the first row fetch (fitted to a console: it was 42, approximate)
 	static constexpr int        VBLANK_END              = 3790;
 	static constexpr int        FIRST_FETCH             = 3933;
 
