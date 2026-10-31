@@ -338,12 +338,11 @@ void atari_maria_device::draw_scanline()
 		if (m_offset == 0)
 			maria_cycles += 8; // extra shutdown time (the fork measured 8; it was 6)
 
-		// If MARIA used up all of the DMA time then the CPU can't run until next line...
+		// If MARIA used up all of her DMA time, the CPU stays halted for 107 cycles from the start
+		// of DMA, half a cycle into the next line (measured on a 7800, with graphics over the
+		// limit on all 192 lines of a frame; it was until the next line started)
 		if (maria_cycles >= DMALIMIT)
-		{
-			m_halt_cb(ASSERT_LINE);
-			m_wsync = true;
-		}
+			maria_cycles = DMALIMIT - 2;
 
 		// Spin the CPU for Maria DMA, if it's not already spinning for WSYNC.
 		// MARIA generates the 6502 clock by dividing its own clock by 4. It needs to HALT and unHALT
@@ -461,7 +460,10 @@ void atari_maria_device::startdma(int lines)
 	if ((frame_scanline > 15) && (frame_scanline < (lines - 5)))
 		draw_scanline();
 
-	if ((frame_scanline > 16) && (frame_scanline < (lines - 5)) && m_dmaon)
+	// on to the zone's next line, or the next zone, after every line drawn, the first included: a
+	// zone is as many lines as its offset says (the first zone had its first line drawn twice,
+	// one line more of DMA a frame than a 7800 measured)
+	if ((frame_scanline > 15) && (frame_scanline < (lines - 5)) && m_dmaon)
 	{
 		if (m_offset == 0)
 		{
