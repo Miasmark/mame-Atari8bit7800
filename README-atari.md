@@ -146,11 +146,11 @@ console (a Model 2609 with the ECS) with five test cartridges: see
 
 - **The STIC takes the bus from the CPU.** MAME took its stolen cycles off the CPU from a timer,
   where that did nothing: the CPU had the whole frame. Now the STIC asserts the CP1610's BUSRQ, the
-  CPU stops at the end of its current instruction until it goes (and two cycles more), and with the
-  display on it takes about 1,370 cycles of a frame's 14,934 (the console: 1,365). A row of cards is
-  copied when the CPU stops for it, at the same point as on the console; bus copy starts when the
-  CPU takes the VBlank interrupt. Games that time themselves against the display (Sewer Sam, TRON
-  Solar Sailer) drifted against it.
+  CPU stops at the end of its next interruptible instruction until it goes (and two cycles more),
+  and with the display on it takes 1,365 cycles of a frame's 14,934, as the console does. The
+  requests' times, the interrupt path and the STIC's register window follow the Pocket core's fit
+  to ten console tests. Games that time themselves against the display (Sewer Sam, TRON Solar
+  Sailer) drifted against it.
 - **A frame is 14,934 CPU cycles** (262 lines of 57), not 14,934.68.
 - **Interrupts are taken after the first interruptible instruction that ends after the request**;
   they were one instruction late.
