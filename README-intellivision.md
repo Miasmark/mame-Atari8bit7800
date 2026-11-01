@@ -16,17 +16,37 @@ the behaviour the console showed. The fork was then corrected to the console (th
 | Test | Console vs. build `095ec275` | Now |
 |---|---|---|
 | hw_cpuodd: undefined CPU cases | **differs** on 6 of 7 cases (NEGR of 0, SDBD with R6, SDBD with direct mode, SDBD before MVO, J with II = 3, MVO@ with the pointer as source) | all 11 words the console's |
-| hw_steal: cycles the STIC takes a frame | **close**: the fork takes 1,412 cycles a frame, the console 1,365 | 1,373 |
+| hw_steal: cycles the STIC takes a frame | **close**: the fork takes 1,412 cycles a frame, the console 1,365 | OFF 33431, ON 30280: the console's (1,365) |
 | hw_rowcopy: when a row of cards is copied | **close**: one column (15 cycles) late on 9 of the 24 steps | all 24 steps the console's |
-| hw_intlate: where the VBlank interrupt is taken | **differs**: 48 cycles, plus the sampling point | `1C 1C 1B 1B 1B 1B`: K1 one later (the sampling point) |
+| hw_intlate: where the VBlank interrupt is taken | **differs**: 48 cycles, plus the sampling point | `1C 1B 1B 1B 1B 1B`: the console's |
 | hw_ecskeys: the ECS keyboard matrix | **differs**: no masking, and no column-to-row scan (from the code) | the console's, for K, K + 8 and K + 8 + F |
 
-What changed, besides the CPU cases: the CP1610 lends the bus at the end of any instruction, not
-only an interruptible one (what `hw_rowcopy`'s copy loop of MVOs needs); the STIC fetches 12 rows,
-with no 13th when the vertical delay is 0 (its request ran into the next frame and held back the
-VBlank interrupt: most of `hw_intlate`'s 48 cycles); the request at the end of VBlank is held about
-100 cycles, not 42. These three were fitted to `hw_steal`, `hw_intlate` and `hw_rowcopy` together,
-not measured one by one. The ECS keyboard is modelled without diodes, both ways.
+What changed, besides the CPU cases and the ECS keyboard (modelled without diodes, both ways): the
+timing fit of the Pocket core (its TIMING_FIT.md, 2026-11-01), which searched its model against all
+ten tests' console screens together. In the fork:
+
+- the CP1610 lends the bus only at the end of an interruptible instruction (GI's 1982 Data Manual,
+  2.5.5; `hw_grant`);
+- the STIC's requests: the frame's from cycle 3,792 for 100 cycles, each row's from 3,926 + 912 r
+  for 107, 12 rows with any vertical delay (no 13th, whose request ran into the next frame and held
+  back the VBlank interrupt: most of `hw_intlate`'s 48 cycles);
+- PULR R7 12 cycles, JSR 13, SDBD + MVI@ into R7 15;
+- the STIC's registers and GRAM shut at the end of VBlank only in a frame whose display is on, and
+  read `$0000` then.
+
+The five later tests, on the console and now on the fork:
+
+| Test | Console | Now |
+|---|---|---|
+| hw_frame2: frame length, dispatcher, `$2C` reads | V `1C 1C 1C 1B 1B 1B`, W `1C 1C 1C 1C 1B 1B`, U `18 18 18 18 17 17`, FRAME CYC 14934, SDBD JUMP 15, `$2C` 3FF1 / 0000 on, 3FF1 / 3FF1 off, 3FF1 after a late `$20` | the console's, every line |
+| hw_steal2: the shape of the bus requests (30 values) | | 5 one pass off (the fit's own residual) |
+| hw_grant: after which instructions the bus is lent (27 values) | | 11 within 2 passes (the fit's own residual) |
+| hw_grantx: probes with the interrupted PC (12 counts, 12 PCs) | | 3 counts one off, 3 PCs one instruction off (the fit's own residual) |
+| hw_frame: frame length by polling a register (superseded by hw_frame2) | NO EDGE (WINDOW) | **differs**: the rows are scrambled and an edge is found (see below) |
+
+`hw_frame` is open: the fork resets the System RAM's row counter only when the CPU takes the
+VBlank interrupt (GI's 1980 catalogue), and this test's frames scramble without it; reset at every
+VBlank, the screen reads but an edge is found at 13,827 cycles.
 
 ## 1. Undefined CPU cases (hw_cpuodd)
 
