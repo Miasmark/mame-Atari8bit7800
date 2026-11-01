@@ -89,7 +89,7 @@ private:
 	void ram16_w(offs_t offset, uint16_t data);
 	uint8_t intvkb_iocart_r(offs_t offset);
 
-	uint8_t m_bus_copy_mode = 0;
+	bool m_display_on = false;      // this frame's display enable, latched at the end of VBlank
 	uint8_t m_backtab_row = 0;      // the System RAM's FIFO address counter, in rows
 	int m_stic_row = 0;             // what the STIC's bus request is for: -1 the end of VBlank, else a row
 	int m_row_delay = 0;
