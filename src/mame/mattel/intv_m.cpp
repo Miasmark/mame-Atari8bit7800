@@ -481,17 +481,18 @@ void intv_state::intvkbd_periph_w(offs_t offset, uint8_t data)
 	}
 }
 
+// The STIC's registers and GRAM are the CPU's in VBlank, and all frame in a frame whose display is
+// off; from the end of VBlank to the next frame they are shut in a frame whose display is on, and
+// read 0 (a console: a late display enable does not shut them; GRAM's reads are taken to match)
+
 uint16_t intv_state::stic_r(offs_t offset)
 {
-	if (m_bus_copy_mode || !m_stic->read_stic_handshake())
-		return m_stic->read(offset);
-	else
-		return offset;
+	return m_display_on ? 0 : m_stic->read(offset);
 }
 
 void intv_state::stic_w(offs_t offset, uint16_t data)
 {
-	if (m_bus_copy_mode || !m_stic->read_stic_handshake())
+	if (!m_display_on)
 		m_stic->write(offset, data);
 }
 
@@ -499,15 +500,12 @@ void intv_state::stic_w(offs_t offset, uint16_t data)
 uint16_t intv_state::gram_r(offs_t offset)
 {
 	//logerror("read: %d = GRAM(%d)\n",state->m_gram[offset],offset);
-	if (m_bus_copy_mode || !m_stic->read_stic_handshake())
-		return m_stic->gram_read(offset);
-	else
-		return offset;
+	return m_display_on ? 0 : m_stic->gram_read(offset);
 }
 
 void intv_state::gram_w(offs_t offset, uint16_t data)
 {
-	if (m_bus_copy_mode || !m_stic->read_stic_handshake())
+	if (!m_display_on)
 		m_stic->gram_write(offset, data);
 }
 
@@ -575,7 +573,7 @@ void intv_state::machine_reset()
 
 void intv_state::machine_start()
 {
-	save_item(NAME(m_bus_copy_mode));
+	save_item(NAME(m_display_on));
 	save_item(NAME(m_backtab_row));
 	save_item(NAME(m_stic_row));
 	save_item(NAME(m_row_delay));
@@ -645,13 +643,13 @@ void intv_state::machine_start()
 
 /*
     The STIC takes the bus from the CPU with BUSRQ, which the CPU grants (BUSAK) at the end of its
-    current instruction and holds until BUSRQ goes. With the display on, it does so once at the end of
-    VBlank, for FRAME_BUSRQ cycles, then for ROW_BUSRQ cycles to fetch each of the 12 rows of cards,
-    one every 16 scanlines (a console's timings: no 13th fetch with no vertical delay). At BUSAK the
-    System RAM leaves bus copy and loads its FIFO with the next row of BACKTAB, which the STIC then
-    takes; a request the CPU does not grant in time leaves the FIFO as it was, and the STIC shows its
-    row again. Bus copy starts, and the FIFO's address counter goes back to the top of BACKTAB, at the
-    CPU's INTAK.
+    next interruptible instruction and holds until BUSRQ goes. With the display on (latched at the end
+    of VBlank), it does so once at the end of VBlank, for FRAME_BUSRQ cycles, then for ROW_BUSRQ
+    cycles to fetch each of the 12 rows of cards, one every 16 scanlines (a console's timings: no
+    13th fetch with no vertical delay). At BUSAK the System RAM loads its FIFO with the next row of
+    BACKTAB, which the STIC then takes; a request the CPU does not grant in time leaves the FIFO as it
+    was, and the STIC shows its row again. The FIFO's address counter goes back to the top of BACKTAB
+    at the CPU's INTAK.
 */
 
 TIMER_CALLBACK_MEMBER(intv_state::interrupt_complete)
@@ -659,12 +657,11 @@ TIMER_CALLBACK_MEMBER(intv_state::interrupt_complete)
 	m_maincpu->set_input_line(CP1610_INT_INTRM, CLEAR_LINE);
 
 	// the display is on if it was enabled during this VBlank
-	if (m_stic->read_stic_handshake())
+	m_display_on = m_stic->read_stic_handshake();
+	if (m_display_on)
 	{
-		m_stic_row = -1;
-		bus_request(stic_device::FRAME_BUSRQ);
 		m_row_delay = m_stic->read_row_delay();
-		m_row_fetch_timer->adjust(m_maincpu->cycles_to_attotime(stic_device::FIRST_FETCH - stic_device::VBLANK_END + stic_device::CYCLES_PER_SCANLINE * stic_device::Y_SCALE * m_row_delay));
+		m_row_fetch_timer->adjust(m_maincpu->cycles_to_attotime(stic_device::FRAME_FETCH - stic_device::VBLANK_END), -1);
 	}
 }
 
@@ -673,6 +670,13 @@ TIMER_CALLBACK_MEMBER(intv_state::row_fetch)
 	constexpr int ROW_CYCLES = stic_device::CYCLES_PER_SCANLINE * stic_device::Y_SCALE * stic_device::CARD_HEIGHT;
 
 	m_stic_row = param;
+	if (param < 0)
+	{
+		// the end of VBlank's request, then the rows'
+		bus_request(stic_device::FRAME_BUSRQ);
+		m_row_fetch_timer->adjust(m_maincpu->cycles_to_attotime(stic_device::FIRST_FETCH - stic_device::FRAME_FETCH + stic_device::CYCLES_PER_SCANLINE * stic_device::Y_SCALE * m_row_delay), 0);
+		return;
+	}
 	bus_request(stic_device::ROW_BUSRQ);
 	if (param + 1 < stic_device::BACKTAB_HEIGHT)
 		m_row_fetch_timer->adjust(m_maincpu->cycles_to_attotime(ROW_CYCLES), param + 1);
@@ -697,7 +701,6 @@ void intv_state::busak_w(int state)
 	if (state != ASSERT_LINE)
 		return;
 
-	m_bus_copy_mode = 0;
 	if (m_stic_row >= 0)
 	{
 		for (int column = 0; column < stic_device::BACKTAB_WIDTH; column++)
@@ -708,7 +711,6 @@ void intv_state::busak_w(int state)
 
 void intv_state::intak_w(uint16_t data)
 {
-	m_bus_copy_mode = 1;
 	m_backtab_row = 0;
 }
 
@@ -716,6 +718,7 @@ INTERRUPT_GEN_MEMBER(intv_state::interrupt)
 {
 	m_maincpu->set_input_line(CP1610_INT_INTRM, ASSERT_LINE);
 	m_sr1_int_pending = 1;
+	m_display_on = false;   // VBlank: the registers are open
 	m_int_complete_timer->adjust(m_maincpu->cycles_to_attotime(stic_device::VBLANK_END));
 	m_stic->screenrefresh();
 }

@@ -1097,7 +1097,7 @@ void cp1610_cpu_device::cp1610_pulr(int d)
 {
 	m_r[6]--;
 	m_r[d] = cp1610_readmem16(m_r[6]);
-	m_icount -= 11;
+	m_icount -= (d == 7) ? 12 : 11;     // PULR R7 one more (fitted to a console's interrupt path)
 }
 
 /***************************************************
@@ -1536,7 +1536,7 @@ void cp1610_cpu_device::cp1610_sdbd_mviat_i(int r, int d)
 	temp = (cp1610_readmem16(m_r[r]) << 8);
 	m_r[r]++;
 	m_r[d] |= temp;
-	m_icount -= 14;
+	m_icount -= (d == 7) ? 15 : 14;     // into R7, a jump, one more (measured on a console)
 }
 
 /***************************************************
@@ -2160,7 +2160,8 @@ void cp1610_cpu_device::cp1610_do_jumps()
 	case 0x303: /* 1 1xx xxx x11 */ cp1610_je(addr); break; // as JE (measured on a console)
 	}
 
-	m_icount -= 12;
+	// JSR takes 13 (fitted to a console's interrupt path, with PULR R7's 12); J was not measured
+	m_icount -= (jumptype & 0x300) != 0x300 ? 13 : 12;
 }
 
 /* Execute cycles */
@@ -2176,7 +2177,7 @@ void cp1610_cpu_device::execute_run()
 
 	do
 	{
-		// requests are taken between instructions
+		// requests are taken between instructions, after one that is interruptible
 		if (take_requests())
 		{
 			m_icount = 0;
@@ -3361,16 +3362,19 @@ void cp1610_cpu_device::execute_run()
 
 
 //-------------------------------------------------
-//  take_requests - between instructions: lend the
-//  bus, and after an interruptible one halt or
-//  take an interrupt; true while the CPU is to wait
+//  take_requests - after an interruptible
+//  instruction: lend the bus, halt or take an
+//  interrupt; true while the CPU is to wait
 //-------------------------------------------------
 
 bool cp1610_cpu_device::take_requests()
 {
-	// BUSRQ is sampled at the end of every instruction, interruptible or not (a console lends the bus
-	// between the non-interruptible MVOs of a copy loop), whether or not interrupts are enabled; once
-	// it goes, two NACT cycles pass before the next fetch, BUSAK rising in the third
+	if (m_mask_interrupts)
+		return false;
+
+	// BUSRQ is sampled at the end of an interruptible instruction, whether or not interrupts are
+	// enabled (the 1982 Data Manual, 2.5.5; a console's grants follow it); once it goes, two NACT
+	// cycles pass before the next fetch, BUSAK rising in the third
 	if (m_busak)
 	{
 		if (m_busrq_state != CLEAR_LINE)
@@ -3385,9 +3389,6 @@ bool cp1610_cpu_device::take_requests()
 		m_write_busak(ASSERT_LINE);
 		return true;
 	}
-
-	if (m_mask_interrupts)
-		return false;
 
 	if (m_halted)
 		return true;
