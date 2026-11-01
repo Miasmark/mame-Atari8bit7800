@@ -46,10 +46,13 @@ public:
 	//Timing constants based on  Joe Zbiciak's documentation, in CPU cycles from the VBlank interrupt
 	static constexpr int        CYCLES_PER_SCANLINE     = 57;
 	static constexpr int        FRAME_CYCLES            = CYCLES_PER_SCANLINE * 262;
-	static constexpr int        ROW_BUSRQ               = 110; // BUSRQ held for each backtab row fetch
-	static constexpr int        FRAME_BUSRQ             = 100; // BUSRQ held at the end of vblank, before the first row fetch (fitted to a console: it was 42, approximate)
-	static constexpr int        VBLANK_END              = 3790;
-	static constexpr int        FIRST_FETCH             = 3933;
+	// (the request times are a console's, fitted to the Analogue Pocket core's hardware tests: the
+	// first row's request was at 3,933 for 110 cycles, the frame's at 3,790 for 42)
+	static constexpr int        ROW_BUSRQ               = 107; // BUSRQ held for each backtab row fetch
+	static constexpr int        FRAME_BUSRQ             = 100; // BUSRQ held at the end of vblank, before the first row fetch
+	static constexpr int        VBLANK_END              = 3790; // the display enable is latched, and the register window shuts
+	static constexpr int        FRAME_FETCH             = 3792; // the end of vblank's request
+	static constexpr int        FIRST_FETCH             = 3926; // the first row's request
 
 	/*** BACKTAB ****************************************************************/
 
