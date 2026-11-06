@@ -84,6 +84,14 @@ mode. With Warm, every colour matches the Pocket core's own screenshots of a col
   colour registers during a visible line puts that colour out for 2 MARIA clocks (one 160-mode
   pixel, two 320-mode ones), dummy reads included; a write repeats the previous pixel for 1 clock.
   (A border in the border colour, `BCNTL`, would show them there too; MAME shows no border.)
+- **Composite Video** (Machine Configuration, NTSC): MARIA's colour and luma codes go through an
+  NTSC encoder and a television's decoder, a clock-for-clock C++ port of MiSTer's core's
+  (`composite_out.sv`, `composite_decoder.sv`, Jamie Blanks, MIT; checked sample for sample against
+  the RTL in Verilator). It gives the colours a TV makes of fine 320-mode patterns: Tower Toppler's
+  tower is solid bricks instead of stripes. Off by default. Composite Smear, AGC and Comb Filter are
+  MiSTer's settings; the Palette setting picks the delay line's temperature. Composite Artifact
+  Phase is where MARIA's pixels sit against the colour carrier: it turns only the pattern colours,
+  a quarter turn a step (1 is the core's; which one a console shows is not settled yet).
 - **No BIOS file needed.** Without one the 7800 boots straight into the cartridge, as with
   `-bios skip`, and the system is not shown as missing its ROMs; MAME notes at start that the
   optional BIOS file is missing. `bios skip` in `a7800.ini` (or `a7800p.ini`) makes skipping the
