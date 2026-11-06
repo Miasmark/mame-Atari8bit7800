@@ -63,13 +63,24 @@ mode. With Warm, every colour matches the Pocket core's own screenshots of a col
 - **Activision `.a78` images in the usual block order** now boot.
 - **MARIA timing from the 7800-devtools a7800 fork**, with MARIA's DMA in its own address space, so
   debugger and Lua watches can tell its reads from the CPU's; updated to the 7800 Software Guide's
-  revised DMA timing (October 2026): a display list interrupt costs no DMA time, holey character
-  objects cost 6 or 9 cycles, and the first DMA of each frame 8 more.
+  revised DMA timing (October 2026): a display list interrupt costs no DMA time, and holey
+  character objects cost 6 or 9 cycles.
 - **MARIA's DMA cost checked on a real NTSC 7800** with the a7800 toolkit's on-screen measuring
   carts (15 display shapes). The first zone of each frame was drawn one line too tall, which
   cost a line of DMA a frame and put the picture a line low; a line past the DMA limit now holds
-  the CPU for 107 cycles. Every shape now costs what it does on the console to within 21 cycles
-  a frame, 12 of the 15 within 7.
+  the CPU for 107 cycles (108 on a zone's last line). Every shape now costs what it does on the
+  console to within 28 cycles a frame, 12 of the 15 within 7.
+- **MARIA's line timing from the openFPGA 7800 core's findings** (November 2026), checked with the
+  core's test cartridges, which read the same on a console: WSYNC lets go at MARIA's line reset,
+  MSTAT's vblank bit changes 42 MARIA clocks later, a line's DMA starts 8 CPU cycles after the
+  reset, and the end of vblank fetches the first zone as 16 clocks of DMA of its own, a line before
+  the first line's DMA. `mstat_test.a78` reads as on the console (1960, 21/105, 242/105), and
+  `dma_diff.a78`'s DMA cost of each of the frame's 263 lines is the core's on every line. The
+  picture sits a line lower than before, on the rows the core shows (27-250).
+- **Colour register reads show at the beam,** as on a console: a CPU read of one of MARIA's 25
+  colour registers during a visible line puts that colour out for 2 MARIA clocks (one 160-mode
+  pixel, two 320-mode ones), dummy reads included; a write repeats the previous pixel for 1 clock.
+  (A border in the border colour, `BCNTL`, would show them there too; MAME shows no border.)
 - **No BIOS file needed.** Without one the 7800 boots straight into the cartridge, as with
   `-bios skip`, and the system is not shown as missing its ROMs; MAME notes at start that the
   optional BIOS file is missing. `bios skip` in `a7800.ini` (or `a7800p.ini`) makes skipping the
@@ -98,9 +109,9 @@ mode. With Warm, every colour matches the Pocket core's own screenshots of a col
   The SpeakJet's sound tables were never published, so the voice is the openfpga-7800 (Analogue
   Pocket) core's speech engine, run clock for clock with the core's program and tables: it says what
   the Pocket says (checked sample for sample against the core's reference over its test cartridge's
-  eight phrases). Its serial control mode follows the SpeakJet's manual (`\0` enters it; `X`, or a
-  backslash and a letter, leaves it), where the core enters it on any backslash; Star Raiders, whose
-  phrases begin with `\V0 `, speaks here and not on the Pocket.
+  eight phrases). Its serial control mode follows the SpeakJet's manual (`\0` enters it; `W` clears
+  the buffer and leaves it; `X`, or a backslash and a letter, leaves it), as the core does since
+  2.2.2 (it entered the mode on any backslash): Star Raiders, whose phrases begin with `\V`, speaks.
 - **FA2 (Star Castle Arcade) saves** its Hall of Fame to the Harmony's flash, kept in the nvram
   folder.
 - **Frame Blending setting** (Machine Configuration menu, on by default; also used by the 7800's
