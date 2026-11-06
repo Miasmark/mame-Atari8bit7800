@@ -132,7 +132,8 @@ void atari_maria_device::device_start()
 	save_item(NAME(m_kangaroo));
 	save_item(NAME(m_rm));
 	save_item(NAME(m_dli));
-	save_item(NAME(m_first_dma));
+	save_item(NAME(m_cram_dot));
+	save_item(NAME(m_shown));
 	save_item(NAME(m_charbase));
 }
 
@@ -164,7 +165,8 @@ void atari_maria_device::device_reset()
 	m_offset = 0;
 	m_dpp = 0;
 	m_dli = false;
-	m_first_dma = false;
+	std::fill(std::begin(m_cram_dot), std::end(m_cram_dot), DOT_NONE);
+	m_shown = 0;
 	m_charbase = 0;
 }
 
@@ -227,15 +229,6 @@ void atari_maria_device::draw_scanline()
 		// cycles for the special last zone line later, as those penalties happen after
 		// MARIA is done rendering, or after its hit the maximum rendering time.
 		uint64_t maria_cycles = 16;
-
-		// The first DMA of a frame costs 8 more (7800 Software Guide, Appendix 3, as of
-		// 2026-10: measured on hardware as 2 CPU cycles a frame with DMA on; which line pays
-		// them is not known, the end of VBLANK that loads the first zone is the guess)
-		if (m_first_dma)
-		{
-			maria_cycles += 8;
-			m_first_dma = false;
-		}
 
 		/* Process this DLL entry */
 		uint16_t dl = m_dl;
@@ -339,10 +332,11 @@ void atari_maria_device::draw_scanline()
 			maria_cycles += 8; // extra shutdown time (the fork measured 8; it was 6)
 
 		// If MARIA used up all of her DMA time, the CPU stays halted for 107 cycles from the start
-		// of DMA, half a cycle into the next line (measured on a 7800, with graphics over the
-		// limit on all 192 lines of a frame; it was until the next line started)
+		// of DMA, 108 on a zone's last line (measured on a 7800, with graphics over the limit on
+		// all 192 lines of a frame, and fitted in the Pocket core: its DMA cut off at column 410
+		// of 454; it was until the next line started)
 		if (maria_cycles >= DMALIMIT)
-			maria_cycles = DMALIMIT - 2;
+			maria_cycles = (m_offset == 0) ? DMALIMIT + 2 : DMALIMIT - 2;
 
 		// Spin the CPU for Maria DMA, if it's not already spinning for WSYNC.
 		// MARIA generates the 6502 clock by dividing its own clock by 4. It needs to HALT and unHALT
@@ -390,11 +384,66 @@ void atari_maria_device::display_visible(int pixelx)
 			break;
 	}
 
+	show_cram_access(scanline, 2 * pixelx);
+	show_cram_access(scanline, 2 * pixelx + 1);
+
 	if (m_color_kill) //remove color if there's no colorburst signal
 	{
 		scanline[2 * pixelx] &= 0x0f;
 		scanline[2 * pixelx + 1] &= 0x0f;
 	}
+	m_shown = pixelx + 1;
+}
+
+
+// MARIA's colour RAM has one port, shared by the pixel output and the CPU: while the CPU reads a
+// colour register in a visible line, the register's address replaces the pixel's for phase 2 (2
+// MARIA clocks), so its colour goes out at the beam; a write's last phase-2 clock reads nothing,
+// and the previous pixel repeats. Dummy reads count as reads. (From the schematics, Eagle's MARIA
+// summary; a console drew the Pocket core's cram_test.a78 that way, 2026-11. A border in the
+// border colour would show the reads too; MAME shows no border. MARIA's own DMA reads of its
+// registers smear the same way on a console, which is not modelled.)
+void atari_maria_device::cram_access(int col, offs_t offset, bool write)
+{
+	if (m_vblank || col < -1 || col >= PICTURE_CLOCKS)
+		return;
+	const int vpos = screen().vpos();
+	if (write)
+		set_cram_dot(vpos, col + 1, DOT_HOLD);
+	else
+	{
+		const uint8_t color = m_maria_palette[offset & 0x1f];
+		set_cram_dot(vpos, col, color);
+		set_cram_dot(vpos, col + 1, color);
+	}
+}
+
+
+void atari_maria_device::set_cram_dot(int vpos, int col, int16_t dot)
+{
+	if (col < 0 || col >= PICTURE_CLOCKS)
+		return;
+	m_cram_dot[col] = dot;
+	if (col / 2 < m_shown) // that pixel is out already (the CPU runs ahead of the display)
+	{
+		uint16_t *const scanline = &m_bitmap.pix(vpos);
+		show_cram_access(scanline, col);
+		if (m_color_kill)
+			scanline[col] &= 0x0f;
+	}
+}
+
+
+void atari_maria_device::show_cram_access(uint16_t *scanline, int col)
+{
+	const int16_t dot = m_cram_dot[col];
+	if (dot == DOT_HOLD)
+	{
+		if (col > 0)
+			scanline[col] = scanline[col - 1];
+	}
+	else if (dot >= 0)
+		scanline[col] = dot;
 }
 
 
@@ -420,20 +469,52 @@ uint8_t atari_maria_device::read_dl(offs_t addr)
 }
 
 
-void atari_maria_device::interrupt(int lines)
+// A line starts at MARIA's line reset (column 412 of 454 in the Pocket core's counting, which
+// follows the schematics): the line RAM buffers swap and WSYNC lets the CPU go. The driver then
+// calls vblank_edge 42 clocks later (column 0), and startdma for the line's DMA at the start of
+// horizontal blank (column 440).
+void atari_maria_device::line_reset()
 {
 	if (m_wsync)
 	{
 		m_halt_cb(CLEAR_LINE);
 		m_wsync = false;
 	}
+	std::fill(std::begin(m_cram_dot), std::end(m_cram_dot), DOT_NONE);
+	m_shown = 0;
+}
 
+
+// Column 0: MSTAT's vblank bit clears on the frame's line 16 and sets on line 258 (308 on PAL), and
+// at the end of vblank MARIA fetches the frame's first zone, 16 clocks of DMA. (The Pocket core's
+// mstat_test.a78 and dma_diff.a78 read the same here as on a 7800 and the core: the bit changes 42
+// clocks after WSYNC lets go, and the first line's DMA comes a line after the zone fetch.)
+void atari_maria_device::vblank_edge(int lines)
+{
 	const int frame_scanline = screen().vpos() % (lines + 1);
-	if (frame_scanline == 16)
-		m_vblank = 0x00;
-
 	if (frame_scanline == (lines - 5))
 		m_vblank = 0x80;
+
+	if (frame_scanline != 16)
+		return;
+
+	m_vblank = 0x00;
+	if (m_dmaon)
+	{
+		m_dll = m_dpp; // currently only handle changes to dll during vblank
+		m_dl = (read_dl(m_dll + 1) << 8) | read_dl(m_dll + 2);
+		const uint8_t header = read_dl(m_dll);
+		m_offset = header & 0x0f;
+		m_holey = (header & 0x60) >> 5;
+		m_dli = BIT(header, 7);
+		if (!m_wsync)
+			m_dma_wait_cb(16);
+		if (m_dli)
+		{
+			m_dli_cb(ASSERT_LINE);
+			m_dli = false;
+		}
+	}
 }
 
 
@@ -444,26 +525,17 @@ void atari_maria_device::startdma(int lines)
 
 	m_active_buffer ^= 1; // switch the working buffer at the start of DMA
 
-	if ((frame_scanline == 16) && m_dmaon)
-	{
-		/* end of vblank */
-		m_first_dma = true;
-		m_dll = m_dpp; // currently only handle changes to dll during vblank
-		m_dl = (read_dl(m_dll + 1) << 8) | read_dl(m_dll + 2);
-		const uint8_t header = read_dl(m_dll);
-		m_offset = header & 0x0f;
-		m_holey = (header & 0x60) >> 5;
-		m_dli = BIT(header, 7);
-		/*  LOGVIDEO("DLL=%x\n", m_dll); */
-	}
-
-	if ((frame_scanline > 15) && (frame_scanline < (lines - 5)))
+	// lines 17-258 (17-308 on PAL), the line after the first zone fetch to the line that starts
+	// vblank: the last DMA is for vblank's first line, which is not shown (it was 16-257, a line
+	// early against MSTAT and the zone fetch)
+	const bool dma_line = (frame_scanline > 16) && (frame_scanline <= (lines - 5));
+	if (dma_line)
 		draw_scanline();
 
 	// on to the zone's next line, or the next zone, after every line drawn, the first included: a
 	// zone is as many lines as its offset says (the first zone had its first line drawn twice,
 	// one line more of DMA a frame than a 7800 measured)
-	if ((frame_scanline > 15) && (frame_scanline < (lines - 5)) && m_dmaon)
+	if (dma_line && m_dmaon)
 	{
 		if (m_offset == 0)
 		{

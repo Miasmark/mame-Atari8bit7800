@@ -19,8 +19,8 @@
     core says. The serial input is the core's too, a bit every 744 clocks,
     with serial control mode as the SpeakJet's manual has it: a backslash
     and 0 enter it, and then R clears the buffer and stops the voice, V
-    says "Ready", and X, or a backslash and a letter, leaves it; the rest
-    is swallowed. (The core enters it on any backslash: Star Raiders begins
+    says "Ready", W clears the buffer and leaves it, and X, or a backslash
+    and a letter, leaves it; the rest is swallowed. (The core enters it on any backslash: Star Raiders begins
     its phrases with "\V0 " to be sure it is out of the mode, then speaks.)
 
     The engine starts with the first start bit it sees, as if the AtariVox
@@ -193,6 +193,10 @@ void atarivox_voice_device::received(u8 data)
 		switch (data)
 		{
 		case 'X':
+			m_scp = false;
+			break;
+		case 'W':   // clear the buffer and leave the mode
+			m_fifo_rp = m_fifo_count = 0;
 			m_scp = false;
 			break;
 		case 'R':   // clear the buffer and stop
