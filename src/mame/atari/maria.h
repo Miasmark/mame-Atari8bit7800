@@ -26,9 +26,15 @@ public:
 	auto halt_callback() { return m_halt_cb.bind(); }
 	auto dli_callback() { return m_dli_cb.bind(); }
 
-	void interrupt(int lines);
+	void line_reset();
+	void vblank_edge(int lines);
 	void startdma(int lines);
 	void display_visible(int pixelx);
+
+	// the CPU read (write: false) or wrote a colour register while the beam was at MARIA clock
+	// `col` of the picture (0-319), in phase 2; the colour registers are $20-$3F but $24, $28 ... $3C
+	static bool is_color_register(offs_t offset) { offset &= 0x1f; return (offset == 0) || (offset & 3); }
+	void cram_access(int col, offs_t offset, bool write);
 
 	// the CPU address range of a bankset cartridge (its ROM and RAM): display lists fetched from it
 	// read as empty (see read_dl); they belong in console RAM
@@ -47,6 +53,12 @@ protected:
 
 private:
 	static constexpr uint32_t LINERAM_SIZE = 160;
+	static constexpr int PICTURE_CLOCKS = 320;      // MARIA clocks in the picture, two a 160 pixel
+	static constexpr int16_t DOT_NONE = -1;         // m_cram_dot: the line RAM's pixel
+	static constexpr int16_t DOT_HOLD = -2;         // the previous clock's pixel again
+
+	void set_cram_dot(int vpos, int col, int16_t dot);
+	void show_cram_access(uint16_t *scanline, int col);
 
 	void draw_scanline();
 	bool is_holey(offs_t addr);
@@ -73,7 +85,8 @@ private:
 	bool m_kangaroo;
 	uint8_t m_rm;
 	bool m_dli;
-	bool m_first_dma = false;   // the next line drawn is the frame's first DMA (it costs more)
+	int16_t m_cram_dot[PICTURE_CLOCKS];   // this line's colour register accesses (DOT_*, or a colour)
+	int m_shown = 0;                      // the line's pixels the display has put out
 	uint32_t m_charbase;
 	bitmap_ind16 m_bitmap;
 
