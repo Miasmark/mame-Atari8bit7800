@@ -100,6 +100,7 @@
 
 #include "emu.h"
 
+#include "a7800_composite.h"
 #include "maria.h"
 #include "tia.h"
 #include "tuccitto_pal.h"
@@ -139,6 +140,7 @@ public:
 		m_io_buttons(*this, "BUTTONS"),
 		m_io_console_buttons(*this, "CONSOLE"),
 		m_io_port2(*this, "PORT2"),
+		m_io_composite(*this, "COMPOSITE"),
 		m_savekey(*this, "savekey"),
 		m_voice(*this, "voice"),
 		m_cart(*this, "cartslot"),
@@ -218,6 +220,9 @@ protected:
 	emu_timer *m_visible_timer = nullptr;
 	emu_timer *m_mstat_timer = nullptr;
 	attotime m_line_start;          // when the line began (MARIA's line reset)
+	a7800_composite m_composite;    // the Composite Video setting's encoder and decoder
+	int m_composite_y = -2;         // the last line it decoded
+	void composite_update(bitmap_rgb32 &bitmap, const rectangle &cliprect);
 	u8 m_pixelx = 0;
 	bool m_cart_ram_exec_warned = false;
 	uint8_t m_palette_choice = 0xff;  // the palette the pens hold (the TIA's Palette setting)
@@ -239,6 +244,7 @@ protected:
 	required_ioport m_io_buttons;
 	required_ioport m_io_console_buttons;
 	required_ioport m_io_port2;
+	optional_ioport m_io_composite;     // NTSC only
 	required_device<i2cmem_device> m_savekey;
 	required_device<atarivox_voice_device> m_voice;
 	required_device<a78_cart_slot_device> m_cart;
@@ -635,6 +641,11 @@ uint32_t a7800_state::screen_update(screen_device &screen, bitmap_rgb32 &bitmap,
 
 	m_maria->screen_update(screen, m_maria_bitmap, cliprect);
 	update_palette();
+	if (m_io_composite && BIT(m_io_composite->read(), 0))
+	{
+		composite_update(bitmap, cliprect);
+		return 0;
+	}
 	pen_t const *const pens = m_palette->pens();
 	for (int y = cliprect.min_y; y <= cliprect.max_y; y++)
 	{
@@ -746,6 +757,34 @@ static INPUT_PORTS_START( a7800 )
 	PORT_DIPNAME(0x80, 0x80, "Right Difficulty Switch")
 	PORT_DIPSETTING(0x80, "A - Right Position" )
 	PORT_DIPSETTING(0x00, "B - Left Position" )
+INPUT_PORTS_END
+
+// The NTSC console's composite video, from MiSTer's core: Off shows the palette's colours; On
+// adds the colours a TV makes of fine patterns (Tower Toppler), with MiSTer's settings. The
+// artifact phase is where MARIA's pixels sit against the colour carrier: it turns only the
+// pattern colours, a quarter turn a step (1 is the core's).
+static INPUT_PORTS_START( a7800_ntsc )
+	PORT_INCLUDE( a7800 )
+
+	PORT_START("COMPOSITE")
+	PORT_CONFNAME(0x01, 0x00, "Composite Video")
+	PORT_CONFSETTING(0x00, DEF_STR( Off ))
+	PORT_CONFSETTING(0x01, DEF_STR( On ))
+	PORT_CONFNAME(0x06, 0x00, "Composite Smear")
+	PORT_CONFSETTING(0x00, "1")
+	PORT_CONFSETTING(0x02, "2")
+	PORT_CONFSETTING(0x04, "3")
+	PORT_CONFNAME(0x08, 0x00, "Composite AGC")
+	PORT_CONFSETTING(0x00, DEF_STR( On ))
+	PORT_CONFSETTING(0x08, DEF_STR( Off ))
+	PORT_CONFNAME(0x10, 0x00, "Composite Comb Filter")
+	PORT_CONFSETTING(0x00, DEF_STR( Off ))
+	PORT_CONFSETTING(0x10, DEF_STR( On ))
+	PORT_CONFNAME(0x60, 0x20, "Composite Artifact Phase")
+	PORT_CONFSETTING(0x00, "0")
+	PORT_CONFSETTING(0x20, "1 (the core's)")
+	PORT_CONFSETTING(0x40, "2")
+	PORT_CONFSETTING(0x60, "3")
 INPUT_PORTS_END
 
 /***************************************************************************
@@ -1707,6 +1746,50 @@ void a7800_state::update_palette()
 		m_palette->set_pen_colors(0, m_ispal ? atari_tuccitto::PAL[choice] : atari_tuccitto::NTSC[choice], 256);
 }
 
+// Composite Video: MARIA's colour and luma codes through an NTSC encoder and a television's
+// decoder (a7800_composite.h, from MiSTer's core), for the colours that only composite makes:
+// Tower Toppler draws its tower with 320-mode patterns that a TV decodes as colour. The picture
+// is the decoder's two samples a MARIA clock averaged to one pixel.
+void a7800_state::composite_update(bitmap_rgb32 &bitmap, const rectangle &cliprect)
+{
+	const ioport_value cfg = m_io_composite->read();
+	a7800_composite::settings st;
+	st.smear = 1 + ((cfg >> 1) & 3);
+	st.agc = !BIT(cfg, 3);
+	st.comb = BIT(cfg, 4);
+	st.phase_adj = (cfg >> 5) & 3;
+	const uint8_t choice = m_tia_video->palette_choice();
+	st.temp = (choice < atari_tuccitto::TEMPERATURES) ? choice : atari_tuccitto::WARM;
+	m_composite.set(st);
+
+	uint8_t codes[a7800_composite::LINE_CLOCKS];
+	uint32_t rgb[a7800_composite::SAMPLES];
+	auto decode = [&] (int y)
+	{
+		std::fill(std::begin(codes), std::end(codes), 0);
+		uint16_t const *const src = &m_maria_bitmap.pix(y);
+		for (int x = 0; x < 320; x++)
+			codes[a7800_composite::PICTURE_START + x] = uint8_t(src[x]);
+		m_composite.line(codes, false, false, rgb);
+		m_composite_y = y;
+	};
+	for (int y = cliprect.min_y; y <= cliprect.max_y; y++)
+	{
+		// the line above first, for the comb and the decoder's state, when it was not the last one
+		if ((m_composite_y != y - 1) && (y > 0))
+			decode(y - 1);
+		decode(y);
+		uint32_t *const dst = &bitmap.pix(y);
+		for (int x = cliprect.min_x; x <= cliprect.max_x; x++)
+		{
+			const int s = 2 * (a7800_composite::PICTURE_START + x) + a7800_composite::LATENCY;
+			const uint32_t a = rgb[s], b = rgb[s + 1];
+			dst[x] = rgb_t(((a >> 16 & 0xff) + (b >> 16 & 0xff) + 1) >> 1, ((a >> 8 & 0xff) + (b >> 8 & 0xff) + 1) >> 1,
+					((a & 0xff) + (b & 0xff) + 1) >> 1);
+		}
+	}
+}
+
 /* Initialise the palette */
 void a7800_state::a7800_palette(palette_device &palette) const
 {
@@ -2029,5 +2112,5 @@ void a7800_pal_state::init_a7800_pal()
 ***************************************************************************/
 
 //    YEAR  NAME    PARENT  COMPAT  MACHINE     INPUT  CLASS             INIT             COMPANY   FULLNAME             FLAGS
-CONS( 1986, a7800,  0,      0,      a7800_ntsc, a7800, a7800_ntsc_state, init_a7800_ntsc, "Atari",  "Atari 7800 (NTSC)", 0 )
+CONS( 1986, a7800,  0,      0,      a7800_ntsc, a7800_ntsc, a7800_ntsc_state, init_a7800_ntsc, "Atari",  "Atari 7800 (NTSC)", 0 )
 CONS( 1986, a7800p, a7800,  0,      a7800_pal,  a7800, a7800_pal_state,  init_a7800_pal,  "Atari",  "Atari 7800 (PAL)",  0 )
