@@ -170,6 +170,10 @@ protected:
 	TIMER_DEVICE_CALLBACK_MEMBER(interrupt);
 	TIMER_CALLBACK_MEMBER(maria_startvisible);
 	TIMER_CALLBACK_MEMBER(maria_startdma);
+	TIMER_CALLBACK_MEMBER(maria_vblank_edge);
+	uint8_t maria_r(offs_t offset);
+	void maria_w(offs_t offset, uint8_t data);
+	int beam_column();
 	// a 7800 cartridge in the slot (a 2600 image in it goes to the 2600 slot, and leaves it without a board)
 	bool has_7800_cart() { return m_cart->exists() && m_cart->has_cart(); }
 
@@ -212,6 +216,8 @@ protected:
 
 	emu_timer *m_dma_start_timer = nullptr;
 	emu_timer *m_visible_timer = nullptr;
+	emu_timer *m_mstat_timer = nullptr;
+	attotime m_line_start;          // when the line began (MARIA's line reset)
 	int m_pixelx = 0;
 	bool m_cart_ram_exec_warned = false;
 	uint8_t m_palette_choice = 0xff;  // the palette the pens hold (the TIA's Palette setting)
@@ -431,9 +437,14 @@ TIMER_DEVICE_CALLBACK_MEMBER(a7800_state::interrupt)
 	if (m_vcs_mode)
 		return;     // MARIA is disabled: no DMA, no display list interrupts
 
-	// DMA Begins 7 cycles after hblank
-	m_dma_start_timer->adjust(m_maincpu->cycles_to_attotime(7));
-	m_maria->interrupt(m_lines);
+	// The line starts at MARIA's line reset, where WSYNC lets the CPU go. MSTAT's edges come 42
+	// MARIA clocks later, and the line's DMA 8 CPU cycles after the reset: the start of horizontal
+	// blank, as the CPU stops (the Pocket core's mstat_test.a78 and dma_diff.a78 read as on the
+	// core and a 7800; DMA started a cycle sooner, and MSTAT changed with WSYNC)
+	m_line_start = machine().time();
+	m_maria->line_reset();
+	m_mstat_timer->adjust(attotime::from_ticks(42, m_clock / 2));
+	m_dma_start_timer->adjust(m_maincpu->cycles_to_attotime(8));
 
 	// Visible pixels begin after 33.5 cycles (a7800 fork): MARIA shows its line a pixel at a time,
 	// every half CPU cycle, so register writes in the middle of a scanline show up in the middle of it
@@ -449,6 +460,13 @@ TIMER_CALLBACK_MEMBER(a7800_state::maria_startvisible)
 		m_visible_timer->adjust(m_maincpu->cycles_to_attotime(1) / 2);
 }
 
+TIMER_CALLBACK_MEMBER(a7800_state::maria_vblank_edge)
+{
+	m_cart->set_dma_active(true);   // the first zone fetch is MARIA's
+	m_maria->vblank_edge(m_lines);
+	m_cart->set_dma_active(false);
+}
+
 TIMER_CALLBACK_MEMBER(a7800_state::maria_startdma)
 {
 	// bankset carts show MARIA the other half of the ROM (and its own bank RAM)
@@ -459,6 +477,30 @@ TIMER_CALLBACK_MEMBER(a7800_state::maria_startdma)
 
 
 // MARIA
+
+// Where the beam is when the CPU accesses MARIA: the MARIA clock of the picture (0-319) at the start
+// of the access's phase 2. The picture starts 33.5 CPU cycles into the line; the CPU's local time is
+// the start of the access's cycle.
+int a7800_state::beam_column()
+{
+	const attotime since = m_maincpu->local_time() - m_line_start;
+	return int(since.as_ticks(m_clock / 2)) - 134 + 2;
+}
+
+uint8_t a7800_state::maria_r(offs_t offset)
+{
+	// (MARIA's own DMA reads come through here too on this version: they are not the CPU's)
+	if (!machine().side_effects_disabled() && !m_maria->in_dma_read() && atari_maria_device::is_color_register(offset))
+		m_maria->cram_access(beam_column(), offset, false);
+	return m_maria->read(offset);
+}
+
+void a7800_state::maria_w(offs_t offset, uint8_t data)
+{
+	if (atari_maria_device::is_color_register(offset))
+		m_maria->cram_access(beam_column(), offset, true);
+	m_maria->write(offset, data);
+}
 
 void a7800_state::dma_wait_cb(uint64_t data)
 {
@@ -488,7 +530,7 @@ void a7800_state::a7800_mem(address_map &map)
 {
 	map(0x0000, 0x01ff).mirror(0x2000).ram().share("ram_2000"); // 0x40-0xff, 0x140-0x1ff are mirrors of second 6116 chip
 	map(0x0000, 0x001f).mirror(0x300).rw(FUNC(a7800_state::tia_r), FUNC(a7800_state::tia_w));
-	map(0x0020, 0x003f).mirror(0x300).rw(m_maria, FUNC(atari_maria_device::read), FUNC(atari_maria_device::write));
+	map(0x0020, 0x003f).mirror(0x300).rw(FUNC(a7800_state::maria_r), FUNC(a7800_state::maria_w));
 	map(0x0280, 0x029f).mirror(0x160).m(m_riot, FUNC(mos6532_device::io_map));
 	map(0x0480, 0x04ff).mirror(0x100).m(m_riot, FUNC(mos6532_device::ram_map));
 	map(0x1800, 0x1fff).ram().share("ram_1800");
@@ -626,6 +668,7 @@ void a7800_state::apply_mode()
 		m_riot->set_unscaled_clock(m_clock / 12);
 		m_dma_start_timer->adjust(attotime::never);
 		m_visible_timer->adjust(attotime::never);
+		m_mstat_timer->adjust(attotime::never);
 		const int lines = m_ispal ? 312 : 262;
 		const rectangle visarea(26, 26 + 160 + 16 - 1, m_ispal ? 32 : 24, m_ispal ? (32 + 228 + 31 - 1) : (24 + 192 + 31 - 1));
 		m_screen->configure(228, lines, visarea, HZ_TO_ATTOSECONDS(m_clock / 4) * 228 * lines);
@@ -1797,6 +1840,8 @@ void a7800_state::machine_start()
 	m_dma_start_timer = timer_alloc(FUNC(a7800_state::maria_startdma), this);
 	m_visible_timer = timer_alloc(FUNC(a7800_state::maria_startvisible), this);
 	save_item(NAME(m_pixelx));
+	m_mstat_timer = timer_alloc(FUNC(a7800_state::maria_vblank_edge), this);
+	save_item(NAME(m_line_start));
 }
 
 void a7800_state::machine_reset()
