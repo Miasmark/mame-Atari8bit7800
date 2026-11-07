@@ -88,7 +88,10 @@ mode. With Warm, every colour matches the Pocket core's own screenshots of a col
   tower is solid bricks instead of stripes. Off by default. Composite Smear, AGC and Comb Filter are
   MiSTer's settings; the Palette setting picks the delay line's temperature. Composite Artifact
   Phase is where MARIA's pixels sit against the colour carrier: it turns only the pattern colours,
-  a quarter turn a step (1 is the core's; which one a console shows is not settled yet).
+  a quarter turn a step (1 is the core's, and a console's: the a7800 toolkit's `artifacttest.a78`).
+  Composite Colour Pin Offset (On by default) is the one change to MiSTer's model: fitted to photos
+  of a console showing the toolkit's `artifacthues.a78`, it makes patterns *in a colour* decode as
+  that console's did (`$AA` in blue nearly the solid blue, `$55` magenta); Off is MiSTer's exactly.
 - **No BIOS file needed.** Without one the 7800 boots straight into the cartridge, as with
   `-bios skip`, and the system is not shown as missing its ROMs; MAME notes at start that the
   optional BIOS file is missing. `bios skip` in `a7800.ini` (or `a7800p.ini`) makes skipping the
