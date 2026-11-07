@@ -40,7 +40,16 @@
     setup (as NTSC-J), luma gain 2857, luma delay 2 samples. The artifact
     phase is where MARIA's pixels sit against the carrier, which turns the
     artifact colours (not the plain ones) by 90 degrees a step: 1 is the
-    core's.
+    core's, and a console's (the a7800 toolkit's artifacttest.a78, 2026-11).
+
+    One addition to MiSTer's model, off when colour_offset is 0: the COLOR
+    pin's level with a colour selected is above its level with none. Fitted to
+    photos of a console showing the toolkit's artifacthues.a78 (every hue's
+    $AA and $55 patterns at luminance 4, 8 and C): 0.08 V brings the patterns'
+    hues, against each row's solid colour, from a median 23 degrees off to 9
+    at luminance 4, and from 30 to 14 at luminance 8 (luminance C's solid
+    colours were too washed out in the photos to judge). With it 0 the port is
+    MiSTer's, sample for sample.
 
 ***************************************************************************/
 
@@ -73,6 +82,7 @@ public:
 		bool comb = false;      // average each line with the one above
 		int phase_adj = 1;      // MARIA's pixels against the carrier, 0-3
 		int temp = 0;           // the colour codes' delay line: 0 warm, 1 cool, 2 hot
+		int32_t colour_offset = 0;  // the COLOR pin's level with a colour selected, Q2.21 volts (0: MiSTer's)
 	};
 
 	struct input
@@ -126,7 +136,7 @@ public:
 			for (size_t i = 0; i < n; i++)
 				key = (key ^ b[i]) * 1099511628211ULL;
 		};
-		const int64_t flags[] = { vblank, vsync, m_s.smear, m_s.agc, m_s.comb, m_s.phase_adj, m_s.temp };
+		const int64_t flags[] = { vblank, vsync, m_s.smear, m_s.agc, m_s.comb, m_s.phase_adj, m_s.temp, m_s.colour_offset };
 		hash(codes, LINE_CLOCKS);
 		hash(flags, sizeof(flags));
 		hash(&m_e, sizeof(m_e));
@@ -282,6 +292,11 @@ private:
 				default: chroma = -chroma_c; break;
 				}
 				chroma = sx(chroma, 24);
+				// Not in MiSTer's model: with a colour selected the COLOR pin sits higher than with
+				// none. A solid colour's resonator takes that level out, but switched every pixel it
+				// is a carrier-rate step, and it turns the colour of a pattern in a colour.
+				if (in.col & 15)
+					chroma += st.colour_offset;
 			}
 
 			// the board's series LC on the chroma
@@ -620,7 +635,7 @@ private:
 		bool valid = false;
 		uint64_t key = 0;
 		uint8_t codes[LINE_CLOCKS];
-		int64_t flags[7];
+		int64_t flags[8];
 		encoder e0, e1;
 		decoder d0, d1;
 		uint16_t lb0[1024], lb1[1024];
