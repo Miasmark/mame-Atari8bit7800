@@ -762,7 +762,9 @@ INPUT_PORTS_END
 // The NTSC console's composite video, from MiSTer's core: Off shows the palette's colours; On
 // adds the colours a TV makes of fine patterns (Tower Toppler), with MiSTer's settings. The
 // artifact phase is where MARIA's pixels sit against the colour carrier: it turns only the
-// pattern colours, a quarter turn a step (1 is the core's).
+// pattern colours, a quarter turn a step (1 is the core's, and a console's). The colour pin offset
+// (a7800_composite.h) changes how patterns in a colour decode, fitted to photos of a console; Off
+// is MiSTer's model exactly.
 static INPUT_PORTS_START( a7800_ntsc )
 	PORT_INCLUDE( a7800 )
 
@@ -785,6 +787,9 @@ static INPUT_PORTS_START( a7800_ntsc )
 	PORT_CONFSETTING(0x20, "1 (the core's)")
 	PORT_CONFSETTING(0x40, "2")
 	PORT_CONFSETTING(0x60, "3")
+	PORT_CONFNAME(0x80, 0x00, "Composite Colour Pin Offset")
+	PORT_CONFSETTING(0x00, "On (fitted to a console)")
+	PORT_CONFSETTING(0x80, "Off (MiSTer's model)")
 INPUT_PORTS_END
 
 /***************************************************************************
@@ -1758,6 +1763,7 @@ void a7800_state::composite_update(bitmap_rgb32 &bitmap, const rectangle &clipre
 	st.agc = !BIT(cfg, 3);
 	st.comb = BIT(cfg, 4);
 	st.phase_adj = (cfg >> 5) & 3;
+	st.colour_offset = BIT(cfg, 7) ? 0 : 167772;     // 0.08 V, Q2.21
 	const uint8_t choice = m_tia_video->palette_choice();
 	st.temp = (choice < atari_tuccitto::TEMPERATURES) ? choice : atari_tuccitto::WARM;
 	m_composite.set(st);
